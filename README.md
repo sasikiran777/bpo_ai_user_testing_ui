@@ -35,6 +35,10 @@ bun install
 bun dev
 ```
 
+### Dev Docs
+
+- [docs/dev-testing.md](file:///Users/sasikiran/Web%20Projects/BPO%20Admin/AI%20User%20Testing/ui/docs/dev-testing.md)
+
 ### Type-Check, Compile and Minify for Production
 
 ```sh

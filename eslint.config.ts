@@ -16,7 +16,7 @@ export default defineConfigWithVueTs(
     files: ['**/*.{vue,ts,mts,tsx}'],
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
+  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**', 'postcss.config.cjs', 'tailwind.config.cjs']),
 
   ...pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
