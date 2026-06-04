@@ -10,9 +10,6 @@ export const isApiConfigured = apiBaseUrl.length > 0
 export const http = axios.create({
   baseURL: apiBaseUrl || undefined,
   timeout: 30_000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 http.interceptors.request.use((config) => {
@@ -21,6 +18,16 @@ http.interceptors.request.use((config) => {
   if (token) {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${token}`
+  }
+
+  const isForm =
+    typeof FormData !== 'undefined' &&
+    typeof config.data !== 'undefined' &&
+    config.data instanceof FormData
+
+  if (isForm) {
+    config.headers = config.headers ?? {}
+    delete (config.headers as Record<string, unknown>)['Content-Type']
   }
 
   return config

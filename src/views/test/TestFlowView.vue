@@ -88,8 +88,13 @@ const onStart = async () => {
   startLoading.value = true
   error.value = null
   try {
+    sessionStorage.removeItem(mappingKey(testId))
     const started = await testsApi.startMyTest(testId, { micro_phone_permission: true })
-    sessionStorage.setItem(mappingKey(testId), started.user_test_mapping_id)
+    const mappingId = started?.user_test_mapping_id
+    if (!mappingId || mappingId === 'undefined' || mappingId === 'null') {
+      throw new Error('Start response missing user_test_mapping_id')
+    }
+    sessionStorage.setItem(mappingKey(testId), mappingId)
     await start()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to start test'
