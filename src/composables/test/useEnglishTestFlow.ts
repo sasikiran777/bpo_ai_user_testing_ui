@@ -1,12 +1,27 @@
 import { computed, reactive, ref } from 'vue'
 import { testApi } from '@/apis/test/test.api'
+import { testsApi } from '@/apis/test/tests.api'
 import { useProctoring } from '@/composables/test/useProctoring'
 import { useSectionTimer } from '@/composables/test/useSectionTimer'
 import type { ReadingSet, SpeakingTopic, TestSession, TestType } from '@/types/test/test.types'
 
 type Phase = 'intro' | 'writing' | 'reading' | 'speaking' | 'results'
 
-export const useEnglishTestFlow = (testType: TestType) => {
+const mappingKey = (testId: string) => `bpo_user_test_mapping_id:${testId}`
+const sectionsKey = (testId: string) => `bpo_test_sections:${testId}`
+
+const readSectionId = (testId: string, section: 'writing' | 'reading' | 'speaking') => {
+  const raw = sessionStorage.getItem(sectionsKey(testId))
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Record<string, string | undefined>
+    return parsed[section] ?? null
+  } catch {
+    return null
+  }
+}
+
+export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const loading = ref(true)
   const error = ref<string | null>(null)
 
@@ -67,6 +82,35 @@ export const useEnglishTestFlow = (testType: TestType) => {
     if (!s || s.status !== 'in_progress' || s.writing) return
     const startedAt = writingStartedAt.value ?? Date.now()
     const submittedAt = Date.now()
+
+    const userTestMappingId = sessionStorage.getItem(mappingKey(testId))
+    const sectionId = readSectionId(testId, 'writing')
+    if (userTestMappingId && sectionId) {
+      const questions = [
+        'Tell us about yourself',
+        'Where are you from?',
+        'Experience summary',
+        'Roles you worked in',
+        'Responsibilities',
+        'Anything else?',
+      ]
+      const answers = [
+        writingValues.aboutMe,
+        writingValues.location,
+        writingValues.experience,
+        writingValues.roles,
+        writingValues.responsibilities,
+        writingValues.other,
+      ]
+      await testsApi.saveAnswers({
+        user_test_mapping_id: userTestMappingId,
+        questions,
+        answers,
+        section_id: sectionId,
+        changed_windows_count: proctoring.changedWindowsCount.value,
+      })
+    }
+
     const next = await testApi.submitWriting(testType, {
       ...writingValues,
       startedAt,
@@ -89,6 +133,21 @@ export const useEnglishTestFlow = (testType: TestType) => {
     if (!readingSet.value) readingSet.value = await testApi.getReadingSet(testType)
     const startedAt = readingStartedAt.value ?? Date.now()
     const submittedAt = Date.now()
+
+    const userTestMappingId = sessionStorage.getItem(mappingKey(testId))
+    const sectionId = readSectionId(testId, 'reading')
+    if (userTestMappingId && sectionId && readingSet.value) {
+      const questions = readingSet.value.questions.map((q) => q.prompt)
+      const answers = readingSet.value.questions.map((q) => readingAnswers[q.id] ?? '')
+      await testsApi.saveAnswers({
+        user_test_mapping_id: userTestMappingId,
+        questions,
+        answers,
+        section_id: sectionId,
+        changed_windows_count: proctoring.changedWindowsCount.value,
+      })
+    }
+
     const next = await testApi.submitReading(testType, {
       readingSetId: readingSet.value.id,
       answers: { ...readingAnswers },

@@ -3,3 +3,9 @@ export type ApiError = {
   message: string
   raw?: unknown
 }
+
+export type ApiEnvelope<T> = {
+  success: boolean
+  message?: string
+  data: T
+}

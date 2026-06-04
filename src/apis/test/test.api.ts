@@ -1,3 +1,4 @@
+import { testsApi } from "@/apis/test/tests.api";
 import { idbAudio } from "@/utils/idb";
 import type {
   ProctoringEvent,
@@ -11,8 +12,7 @@ import type {
   SpeakingSubmissionMeta,
 } from "@/types/test/test.types";
 
-const getAuthKey = () =>
-  localStorage.getItem("auth_token") ?? sessionStorage.getItem("auth_token") ?? "anon";
+const getAuthKey = () => localStorage.getItem("auth_token") ?? "anon";
 
 const sessionKey = (testType: TestType) => `bpo_test_session:${getAuthKey()}:${testType}`;
 const resultsKey = (testType: TestType) => `bpo_test_results:${getAuthKey()}:${testType}`;
@@ -147,6 +147,12 @@ export const testApi = {
   },
 
   async getInstructions(testType: TestType): Promise<{ title: string; bullets: string[] }> {
+    try {
+      const tests = await testsApi.list();
+      const match = tests.find((t) => t.code === testType);
+      if (match) return { title: match.name, bullets: match.instruction ?? [] };
+    } catch {}
+
     if (testType === "english") {
       return {
         title: "English Skills Test",

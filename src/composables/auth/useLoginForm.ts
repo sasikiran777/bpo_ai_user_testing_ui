@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from "vue";
+import { computed, reactive } from "vue";
 import { useRegle } from "@regle/core";
 import { useAuth } from "@/composables/auth/useAuth";
 import { loginRules } from "@/validations/auth/login.validation";
@@ -17,7 +17,6 @@ export const useLoginForm = () => {
     email: "",
     password: "",
   });
-  const rememberMe = ref(false);
 
   const { r$ } = useRegle(values, loginRules);
 
@@ -52,16 +51,12 @@ export const useLoginForm = () => {
       return;
     }
 
-    await auth.login(
-      { email: values.email.trim(), password: values.password },
-      { remember: rememberMe.value },
-    );
+    await auth.login({ email: values.email.trim(), password: values.password });
     router.replace({ name: "dashboard" });
   };
 
   return {
     values,
-    rememberMe,
     errors,
     canSubmit,
     touch,

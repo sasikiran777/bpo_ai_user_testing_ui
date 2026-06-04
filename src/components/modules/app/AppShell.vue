@@ -4,10 +4,14 @@ import { useAuth } from '@/composables/auth/useAuth'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
+defineProps<{
+  logoutDisabled?: boolean
+}>()
+
 const auth = useAuth()
 const router = useRouter()
 
-const displayName = computed(() => auth.user.value?.name ?? auth.user.value?.email ?? 'User')
+const displayName = computed(() => auth.user.value?.firstName ?? auth.user.value?.email ?? 'User')
 
 const logout = () => {
   auth.logout()
@@ -31,7 +35,9 @@ const logout = () => {
           </div>
         </div>
 
-        <AppButton variant="secondary" class="h-9 px-4 text-sm" @click="logout">Logout</AppButton>
+        <AppButton variant="secondary" class="h-9 px-4 text-sm" :disabled="logoutDisabled" @click="logout"
+          >Logout</AppButton
+        >
       </div>
     </header>
 
@@ -40,4 +46,3 @@ const logout = () => {
     </main>
   </div>
 </template>
-

@@ -2,13 +2,17 @@
 import AppShell from "@/components/modules/app/AppShell.vue";
 import AppButton from "@/components/ui/AppButton.vue";
 import { testApi } from "@/apis/test/test.api";
+import { testsApi } from "@/apis/test/tests.api";
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { TestResults, TestSession, TestType } from "@/types/test/test.types";
+import type { TestCatalogItem } from "@/types/test/testCatalog.types";
 
 const route = useRoute();
 const router = useRouter();
-const testType = ((route.params.testType as string) || "english") as TestType;
+const testId = String(route.params.testId ?? "");
+const testType = "english" as TestType;
+const test = ref<TestCatalogItem | null>(null);
 
 const loading = ref(true);
 const session = ref<TestSession | null>(null);
@@ -42,7 +46,17 @@ const startPolling = () => {
 };
 
 onMounted(async () => {
-  if (testType !== "english") {
+  if (!testId) {
+    router.replace({ name: "dashboard" });
+    return;
+  }
+  try {
+    test.value = await testsApi.get(testId);
+  } catch {
+    router.replace({ name: "dashboard" });
+    return;
+  }
+  if (test.value?.code !== "english") {
     router.replace({ name: "dashboard" });
     return;
   }
@@ -63,7 +77,9 @@ onBeforeUnmount(() => {
       <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div class="text-xs font-extrabold tracking-[1.8px] text-white/55">RESULTS</div>
-          <h1 class="mt-2 text-3xl font-extrabold tracking-[-0.6px]">English Skills Test</h1>
+          <h1 class="mt-2 text-3xl font-extrabold tracking-[-0.6px]">
+            {{ test?.name ?? "Test Results" }}
+          </h1>
           <div v-if="session" class="mt-2 text-xs font-bold text-white/55">
             Session: {{ session.id }}
           </div>

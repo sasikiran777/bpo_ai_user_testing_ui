@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import AppButton from "@/components/ui/AppButton.vue";
-import AppCheckbox from "@/components/ui/AppCheckbox.vue";
 import AppInput from "@/components/ui/AppInput.vue";
 import { useLoginForm } from "@/composables/auth/useLoginForm";
+import { useRouter } from "vue-router";
 
-const { values, errors, rememberMe, canSubmit, touch, submit, auth } = useLoginForm();
+const router = useRouter();
+const { values, errors, canSubmit, touch, submit, auth } = useLoginForm();
 const { loading, error } = auth;
 </script>
 
@@ -42,7 +43,6 @@ const { loading, error } = auth;
         <a class="text-[13px] font-bold text-[#ff8a1f] hover:underline" href="#" @click.prevent>
           Forgot password?
         </a>
-        <AppCheckbox v-model="rememberMe" label="Remember me" />
       </div>
 
       <div
@@ -58,9 +58,13 @@ const { loading, error } = auth;
       </AppButton>
 
       <div class="pt-2 text-center text-xs text-slate-500">
-        Having trouble?
-        <a class="font-bold text-[#ff8a1f] hover:underline" href="#" @click.prevent>
-          Contact your administrator
+        No account?
+        <a
+          class="font-bold text-[#ff8a1f] hover:underline"
+          href="#"
+          @click.prevent="router.push({ name: 'register' })"
+        >
+          Register here
         </a>
       </div>
     </form>

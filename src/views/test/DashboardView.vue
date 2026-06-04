@@ -1,51 +1,67 @@
 <script setup lang="ts">
 import AppShell from "@/components/modules/app/AppShell.vue";
 import AppButton from "@/components/ui/AppButton.vue";
-import { testApi } from "@/apis/test/test.api";
-import { computed, onMounted, ref } from "vue";
+import { testsApi } from "@/apis/test/tests.api";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import type { TestSession } from "@/types/test/test.types";
+import type { TestCatalogItem } from "@/types/test/testCatalog.types";
 
 const router = useRouter();
-const session = ref<TestSession | null>(null);
 const loading = ref(true);
+const tests = ref<TestCatalogItem[]>([]);
+const testsError = ref<string | null>(null);
 
-const statusLabel = computed(() => {
-  const s = session.value;
-  if (!s) return "Loading";
-  if (s.status === "not_started") return "Not started";
-  if (s.status === "in_progress") return "In progress";
-  if (s.status === "grading") return "Grading";
-  if (s.status === "completed") return "Completed";
-  if (s.status === "failed") return "Failed";
-  return s.status;
-});
+const sectionSummary = (t: TestCatalogItem) => {
+  const active = (t.sections ?? []).filter((s) => s.is_active);
+  if (!active.length) return "";
+  return active.map((s) => `${s.name} (${s.max_time}m)`).join(" · ");
+};
 
-const primaryAction = computed(() => {
-  const s = session.value;
-  if (!s) return { label: "Loading", to: null as unknown, disabled: true };
-  if (s.status === "not_started" || s.status === "in_progress") {
+const statusBadge = (t: TestCatalogItem) => {
+  if (!t.is_active) return "Inactive";
+  if (t.status === "not_attempted") return "Not attempted";
+  if (t.status === "in_progress") return "In progress";
+  if (t.status === "grading") return "Grading";
+  if (t.status === "completed") return "Completed";
+  if (t.status === "failed") return "Failed";
+  return t.status;
+};
+
+const cardAction = (t: TestCatalogItem) => {
+  if (!t.is_active) return { label: "Unavailable", disabled: true, to: null as unknown };
+  if (t.code !== "english") return { label: "Coming soon", disabled: true, to: null as unknown };
+
+  if (t.status === "not_attempted") {
+    return { label: "Start", disabled: false, to: { name: "test", params: { testId: t.id } } };
+  }
+  if (t.status === "in_progress") {
+    return { label: "Continue", disabled: false, to: { name: "test", params: { testId: t.id } } };
+  }
+  if (t.status === "grading" || t.status === "completed" || t.status === "failed") {
     return {
-      label: s.status === "in_progress" ? "Continue" : "Start",
-      to: { name: "test", params: { testType: "english" } },
+      label: "View results",
       disabled: false,
+      to: { name: "results", params: { testId: t.id } },
     };
   }
-  return {
-    label: "View results",
-    to: { name: "results", params: { testType: "english" } },
-    disabled: false,
-  };
-});
+  return { label: "Unavailable", disabled: true, to: null as unknown };
+};
 
-const goPrimary = () => {
-  if (!primaryAction.value.to) return;
-  router.push(primaryAction.value.to);
+const goCard = (t: TestCatalogItem) => {
+  const act = cardAction(t);
+  if (!act.to) return;
+  router.push(act.to);
 };
 
 onMounted(async () => {
   loading.value = true;
-  session.value = await testApi.getOrCreateSession("english");
+  testsError.value = null;
+  try {
+    tests.value = await testsApi.myTests();
+  } catch (e) {
+    testsError.value = (e as { message?: string } | undefined)?.message ?? "Failed to load tests";
+    tests.value = [];
+  }
   loading.value = false;
 });
 </script>
@@ -61,47 +77,45 @@ onMounted(async () => {
         </p>
       </div>
 
+      <div
+        v-if="testsError"
+        class="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+      >
+        {{ testsError }}
+      </div>
+
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div class="rounded-3xl border border-white/10 bg-black/25 p-6 backdrop-blur">
+        <div
+          v-for="t in tests"
+          :key="t.id"
+          class="rounded-3xl border border-white/10 bg-black/25 p-6 backdrop-blur"
+          :class="!t.is_active ? 'opacity-70' : ''"
+        >
           <div class="flex items-start justify-between gap-4">
             <div>
-              <div class="text-sm font-extrabold tracking-[-0.2px]">English Skills Test</div>
-              <div class="mt-1 text-xs font-bold text-white/55">
-                Writing (5m) · Reading (5m) · Speaking (3m)
+              <div class="text-sm font-extrabold tracking-[-0.2px]">{{ t.name }}</div>
+              <div v-if="sectionSummary(t)" class="mt-1 text-xs font-bold text-white/55">
+                {{ sectionSummary(t) }}
               </div>
             </div>
             <div
               class="rounded-2xl border border-white/10 bg-black/35 px-3 py-1.5 text-xs font-extrabold tracking-[0.8px]"
             >
-              {{ statusLabel }}
+              {{ statusBadge(t) }}
             </div>
           </div>
 
-          <p class="mt-4 text-sm leading-6 text-white/65">
-            Measures real-world English communication with timed writing, comprehension, and
-            speaking.
-          </p>
+          <p class="mt-4 text-sm leading-6 text-white/65">{{ t.description }}</p>
 
           <div class="mt-6 flex items-center justify-between gap-3">
             <div class="text-xs font-semibold text-white/55">Single attempt only</div>
             <AppButton
               class="h-10 px-6"
-              :disabled="loading || primaryAction.disabled"
-              @click="goPrimary"
+              :disabled="loading || cardAction(t).disabled"
+              @click="goCard(t)"
             >
-              {{ primaryAction.label }}
+              {{ cardAction(t).label }}
             </AppButton>
-          </div>
-        </div>
-
-        <div class="rounded-3xl border border-white/10 bg-black/15 p-6 opacity-70">
-          <div class="text-sm font-extrabold tracking-[-0.2px]">Agentic AI Testing</div>
-          <div class="mt-1 text-xs font-bold text-white/55">Coming soon</div>
-          <p class="mt-4 text-sm leading-6 text-white/65">
-            Future module for agentic AI workflows and scenario-based testing.
-          </p>
-          <div class="mt-6 flex items-center justify-end">
-            <AppButton class="h-10 px-6" disabled>Unavailable</AppButton>
           </div>
         </div>
       </div>
