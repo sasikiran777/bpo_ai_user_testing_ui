@@ -1,4 +1,4 @@
-import { http, isApiConfigured } from "@/config/http_handler";
+import { apiBaseUrl, http, isApiConfigured } from "@/config/http_handler";
 import type { ApiEnvelope } from "@/types/api/api.types";
 import type { TestCatalogItem } from "@/types/test/testCatalog.types";
 
@@ -114,6 +114,7 @@ export const testsApi = {
     answers: string[];
     section_id: string;
     changed_windows_count: number;
+    test_notes?: string[];
   }): Promise<unknown> {
     if (!isApiConfigured) return { ok: true };
     const { data } = await http.post<ApiEnvelope<unknown>>("/tests/my-tests/save-answers", payload);
@@ -125,6 +126,7 @@ export const testsApi = {
     question: string;
     changed_windows_count: number;
     audio: Blob;
+    test_notes?: string[];
   }): Promise<unknown> {
     if (!isApiConfigured) return { ok: true };
     const form = new FormData();
@@ -132,6 +134,9 @@ export const testsApi = {
     form.append("section_id", payload.section_id);
     form.append("question", payload.question);
     form.append("changed_windows_count", String(payload.changed_windows_count ?? 0));
+    if (payload.test_notes?.length) {
+      form.append("test_notes", JSON.stringify(payload.test_notes));
+    }
 
     const filename = payload.audio.type?.includes("wav")
       ? "audio.wav"
@@ -182,6 +187,43 @@ export const testsApi = {
       if (import.meta.env.DEV && typeof status === "undefined") return mockTests;
       throw e;
     }
+  },
+  async failMyTest(testId: string): Promise<unknown> {
+    if (!isApiConfigured) return { ok: true };
+    const { data } = await http.post<ApiEnvelope<unknown>>(`/tests/my-tests/${testId}/fail`, {});
+    return unwrap(data);
+  },
+  async dropMyTest(userTestMappingId: string, opts?: { keepalive?: boolean }): Promise<unknown> {
+    if (!isApiConfigured) return { ok: true };
+
+    if (opts?.keepalive && typeof fetch !== "undefined") {
+      const base = apiBaseUrl.replace(/\/$/, "");
+      const url = `${base}/my-tests/${encodeURIComponent(userTestMappingId)}/drop`;
+      const token = localStorage.getItem("auth_token");
+
+      try {
+        await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: "{}",
+          keepalive: true,
+          credentials: "include",
+        });
+      } catch {
+        return { ok: false };
+      }
+
+      return { ok: true };
+    }
+
+    const { data } = await http.post<ApiEnvelope<unknown>>(
+      `/my-tests/${encodeURIComponent(userTestMappingId)}/drop`,
+      {},
+    );
+    return unwrap(data);
   },
   async list(): Promise<TestCatalogItem[]> {
     return this.myTests();

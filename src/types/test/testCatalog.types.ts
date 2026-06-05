@@ -18,7 +18,17 @@ export type TestCatalogItem = {
   sections: TestSectionSummary[];
   attempted: boolean;
   user_test_mapping_id: string | null;
-  status: "not_attempted" | "in_progress" | "completed" | "failed" | "grading";
+  status:
+    | "not_attempted"
+    | "initialized"
+    | "in_progress"
+    | "submitted"
+    | "in_gradding"
+    | "gradded"
+    | "grading"
+    | "completed"
+    | "failed"
+    | string;
   reset_count: number;
   completed_at: string | null;
   grading_completed: boolean;

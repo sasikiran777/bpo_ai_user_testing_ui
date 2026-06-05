@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { testApi } from "@/apis/test/test.api";
 import { testsApi } from "@/apis/test/tests.api";
 import { useProctoring } from "@/composables/test/useProctoring";
@@ -46,6 +46,94 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     responsibilities: "",
     other: "",
   });
+
+  const writingTyping = reactive({
+    aboutMe: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
+    location: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
+    experience: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
+    roles: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
+    responsibilities: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
+    other: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
+  });
+
+  const resetWritingTyping = () => {
+    for (const v of Object.values(writingTyping)) {
+      v.firstTs = 0;
+      v.lastTs = 0;
+      v.lastLen = 0;
+      v.addedChars = 0;
+      v.activeMs = 0;
+    }
+  };
+
+  const recordWritingTyping = (
+    key: keyof typeof writingTyping,
+    value: string,
+    nowTs = Date.now(),
+  ) => {
+    const s = writingTyping[key];
+    const len = value.length;
+    if (!s.firstTs) s.firstTs = nowTs;
+    if (s.lastTs) {
+      const dt = nowTs - s.lastTs;
+      if (dt > 0 && dt < 5000) s.activeMs += dt;
+      const delta = len - s.lastLen;
+      if (delta > 0) s.addedChars += delta;
+    }
+    s.lastTs = nowTs;
+    s.lastLen = len;
+  };
+
+  const calcWpm = (s: {
+    firstTs: number;
+    lastTs: number;
+    addedChars: number;
+    activeMs: number;
+  }) => {
+    const ms = s.activeMs > 0 ? s.activeMs : Math.max(1, s.lastTs - s.firstTs);
+    if (!ms || s.addedChars <= 0) return 0;
+    return s.addedChars / 5 / (ms / 60000);
+  };
+
+  const buildWritingTestNotes = (labels: string[]) => {
+    const entries: Array<{ label: string; wpm: number }> = [
+      { label: labels[0] ?? "Tell us about yourself", wpm: calcWpm(writingTyping.aboutMe) },
+      { label: labels[1] ?? "Where are you from?", wpm: calcWpm(writingTyping.location) },
+      { label: labels[2] ?? "Experience summary", wpm: calcWpm(writingTyping.experience) },
+      { label: labels[3] ?? "Roles you worked in", wpm: calcWpm(writingTyping.roles) },
+      { label: labels[4] ?? "Responsibilities", wpm: calcWpm(writingTyping.responsibilities) },
+      { label: labels[5] ?? "Anything else?", wpm: calcWpm(writingTyping.other) },
+    ];
+
+    const totalChars =
+      writingTyping.aboutMe.addedChars +
+      writingTyping.location.addedChars +
+      writingTyping.experience.addedChars +
+      writingTyping.roles.addedChars +
+      writingTyping.responsibilities.addedChars +
+      writingTyping.other.addedChars;
+
+    const totalMs =
+      writingTyping.aboutMe.activeMs +
+      writingTyping.location.activeMs +
+      writingTyping.experience.activeMs +
+      writingTyping.roles.activeMs +
+      writingTyping.responsibilities.activeMs +
+      writingTyping.other.activeMs;
+
+    const typedFields = Object.values(writingTyping).filter(
+      (v) => v.addedChars > 0 && v.firstTs && v.lastTs,
+    );
+    const minFirst = typedFields.length ? Math.min(...typedFields.map((v) => v.firstTs)) : 0;
+    const maxLast = typedFields.length ? Math.max(...typedFields.map((v) => v.lastTs)) : 0;
+    const fallbackMs = Math.max(1, maxLast - minFirst);
+    const effectiveMs = totalMs > 0 ? totalMs : fallbackMs;
+    const avgWpm = totalChars > 0 ? totalChars / 5 / (effectiveMs / 60000) : 0;
+
+    const notes: string[] = [`Avg typing speed: ${avgWpm.toFixed(1)} wpm`];
+    for (const e of entries) notes.push(`${e.label}: ${e.wpm.toFixed(1)} wpm`);
+    return notes;
+  };
 
   const readingAnswers = reactive<Record<string, string>>({});
 
@@ -115,6 +203,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
         answers,
         section_id: sectionId,
         changed_windows_count: proctoring.changedWindowsCount.value,
+        test_notes: buildWritingTestNotes(questions),
       });
     }
 
@@ -152,6 +241,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
         answers,
         section_id: sectionId,
         changed_windows_count: proctoring.changedWindowsCount.value,
+        test_notes: [readingSet.value.passage],
       });
     }
 
@@ -187,6 +277,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
       question,
       changed_windows_count: proctoring.changedWindowsCount.value,
       audio,
+      test_notes: [question],
     });
 
     await testApi.submitSpeaking(testType, audio, {
@@ -227,6 +318,9 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
       session.value = s;
       instructions.value = i;
       phase.value = computePhaseFromSession(s);
+      if (s.status === "not_started") {
+        sessionStorage.removeItem(mappingKey(testId));
+      }
 
       if (s.writing) {
         writingValues.aboutMe = s.writing.aboutMe;
@@ -274,6 +368,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     proctoring.start();
     phase.value = computePhaseFromSession(s);
     writingStartedAt.value = Date.now();
+    resetWritingTyping();
     writingTimer.start();
   };
 
@@ -302,6 +397,31 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
 
   const finalizeSpeakingAuto = async (audio: Blob, startedAt: number) =>
     submitSpeakingInternal(audio, startedAt, true);
+
+  watch(
+    () => writingValues.aboutMe,
+    (v) => recordWritingTyping("aboutMe", v),
+  );
+  watch(
+    () => writingValues.location,
+    (v) => recordWritingTyping("location", v),
+  );
+  watch(
+    () => writingValues.experience,
+    (v) => recordWritingTyping("experience", v),
+  );
+  watch(
+    () => writingValues.roles,
+    (v) => recordWritingTyping("roles", v),
+  );
+  watch(
+    () => writingValues.responsibilities,
+    (v) => recordWritingTyping("responsibilities", v),
+  );
+  watch(
+    () => writingValues.other,
+    (v) => recordWritingTyping("other", v),
+  );
 
   return {
     loading,

@@ -5,6 +5,7 @@ import { testsApi } from "@/apis/test/tests.api";
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import type { TestCatalogItem } from "@/types/test/testCatalog.types";
+import { deriveUserTestState } from "@/utils/userTestStatus";
 
 const router = useRouter();
 const loading = ref(true);
@@ -19,25 +20,27 @@ const sectionSummary = (t: TestCatalogItem) => {
 
 const statusBadge = (t: TestCatalogItem) => {
   if (!t.is_active) return "Inactive";
-  if (t.status === "not_attempted") return "Not attempted";
-  if (t.status === "in_progress") return "In progress";
-  if (t.status === "grading") return "Grading";
-  if (t.status === "completed") return "Completed";
-  if (t.status === "failed") return "Failed";
-  return t.status;
+  const s = deriveUserTestState(t);
+  if (s === "not_attempted") return "Not attempted";
+  if (s === "initialized") return "Initialized";
+  if (s === "in_progress") return "In progress";
+  if (s === "submitted") return "Submitted";
+  if (s === "in_gradding") return "In grading";
+  if (s === "gradded") return "Graded";
+  if (s === "failed") return "Failed";
+  return String(t.status ?? "");
 };
 
 const cardAction = (t: TestCatalogItem) => {
   if (!t.is_active) return { label: "Unavailable", disabled: true, to: null as unknown };
   if (t.code !== "english") return { label: "Coming soon", disabled: true, to: null as unknown };
 
-  if (t.status === "not_attempted") {
+  const s = deriveUserTestState(t);
+
+  if (s === "not_attempted") {
     return { label: "Start", disabled: false, to: { name: "test", params: { testId: t.id } } };
   }
-  if (t.status === "in_progress") {
-    return { label: "Continue", disabled: false, to: { name: "test", params: { testId: t.id } } };
-  }
-  if (t.status === "grading" || t.status === "completed" || t.status === "failed") {
+  if (s === "in_gradding" || s === "gradded") {
     return {
       label: "View results",
       disabled: false,

@@ -5,6 +5,9 @@ import { RegleVuePlugin } from "@regle/core";
 
 import App from "./App.vue";
 import router from "./router";
+import { clearLegacyTestStorage } from "./utils/legacyTestStorage";
+
+clearLegacyTestStorage();
 
 const app = createApp(App);
 

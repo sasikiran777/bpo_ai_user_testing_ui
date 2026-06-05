@@ -1,4 +1,5 @@
 import { testsApi } from "@/apis/test/tests.api";
+import { clearLegacyTestStorage } from "@/utils/legacyTestStorage";
 import { idbAudio } from "@/utils/idb";
 import type {
   ProctoringEvent,
@@ -12,16 +13,18 @@ import type {
   SpeakingSubmissionMeta,
 } from "@/types/test/test.types";
 
-const getAuthKey = () => localStorage.getItem("auth_token") ?? "anon";
+clearLegacyTestStorage();
 
-const sessionKey = (testType: TestType) => `bpo_test_session:${getAuthKey()}:${testType}`;
-const resultsKey = (testType: TestType) => `bpo_test_results:${getAuthKey()}:${testType}`;
-const gradingKey = (testType: TestType) => `bpo_test_grading_ready_at:${getAuthKey()}:${testType}`;
+const memoryStore = new Map<string, string>();
+
+const sessionKey = (testType: TestType) => `bpo_test_session:${testType}`;
+const resultsKey = (testType: TestType) => `bpo_test_results:${testType}`;
+const gradingKey = (testType: TestType) => `bpo_test_grading_ready_at:${testType}`;
 
 const now = () => Date.now();
 
 const readJson = <T>(key: string): T | null => {
-  const raw = localStorage.getItem(key);
+  const raw = memoryStore.get(key);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
@@ -31,7 +34,7 @@ const readJson = <T>(key: string): T | null => {
 };
 
 const writeJson = (key: string, value: unknown) => {
-  localStorage.setItem(key, JSON.stringify(value));
+  memoryStore.set(key, JSON.stringify(value));
 };
 
 const randomId = () => Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
@@ -217,7 +220,7 @@ export const testApi = {
   ): Promise<TestSession> {
     const s = await this.getOrCreateSession(testType);
     if (s.status !== "in_progress" || !s.writing || !s.reading || s.speaking) return s;
-    await idbAudio.set(`${getAuthKey()}:${testType}:${s.id}`, audio);
+    await idbAudio.set(`${testType}:${s.id}`, audio);
     const next: TestSession = { ...s, speaking: meta, updatedAt: now() };
     writeJson(sessionKey(testType), next);
     return next;
@@ -230,7 +233,7 @@ export const testApi = {
     const next: TestSession = { ...s, status: "grading", updatedAt: now() };
     writeJson(sessionKey(testType), next);
     const readyAt = now() + 15000;
-    localStorage.setItem(gradingKey(testType), String(readyAt));
+    memoryStore.set(gradingKey(testType), String(readyAt));
     writeJson(resultsKey(testType), computeResults(testType, next));
     return next;
   },
@@ -271,7 +274,7 @@ export const testApi = {
       return r;
     }
 
-    const readyAtRaw = localStorage.getItem(gradingKey(testType));
+    const readyAtRaw = memoryStore.get(gradingKey(testType));
     const readyAt = readyAtRaw ? Number(readyAtRaw) : 0;
     const isReady = Boolean(readyAt) && now() >= readyAt;
 
@@ -293,6 +296,6 @@ export const testApi = {
   },
 
   async getSpeakingAudio(testType: TestType, sessionId: string): Promise<Blob | undefined> {
-    return idbAudio.get(`${getAuthKey()}:${testType}:${sessionId}`);
+    return idbAudio.get(`${testType}:${sessionId}`);
   },
 };
