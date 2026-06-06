@@ -68,9 +68,6 @@ const other = computed({
           Write about yourself. Try to be clear and detailed. Auto-submits when time ends.
         </p>
       </div>
-      <div class="rounded-2xl border border-white/10 bg-black/35 px-4 py-2 text-sm font-extrabold tracking-[0.6px]">
-        {{ timerLabel }}: <span class="text-[#ff8a1f]">{{ timerValue }}</span>
-      </div>
     </div>
 
     <div class="grid gap-4">

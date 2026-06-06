@@ -94,6 +94,24 @@ const onStart = async () => {
       throw new Error("Start response missing user_test_mapping_id");
     }
     sessionStorage.setItem(mappingKey(testId), mappingId);
+
+    const rawSections = sessionStorage.getItem(sectionsKey(testId));
+    const sections = rawSections
+      ? (JSON.parse(rawSections) as Record<string, string | undefined>)
+      : {};
+    const readingSectionId = sections.reading;
+    const speakingSectionId = sections.speaking;
+    if (!readingSectionId || !speakingSectionId) {
+      throw new Error("Missing section ids for reading/speaking");
+    }
+
+    const [rs, topic] = await Promise.all([
+      testsApi.getReadingBySection(readingSectionId),
+      testsApi.getSpeakingTopicBySection(speakingSectionId),
+    ]);
+    readingSet.value = rs;
+    speakingTopic.value = topic;
+
     await start();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to start test";

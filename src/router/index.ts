@@ -66,7 +66,7 @@ router.beforeEach(async (to) => {
         if (s !== "not_attempted") return { name: "dashboard" };
       }
       if (to.name === "results") {
-        if (s !== "in_gradding" && s !== "gradded") return { name: "dashboard" };
+        if (s !== "in_gradding" && s !== "graded") return { name: "dashboard" };
       }
     } catch {
       return { name: "dashboard" };

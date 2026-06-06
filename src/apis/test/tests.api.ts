@@ -1,6 +1,7 @@
 import { apiBaseUrl, http, isApiConfigured } from "@/config/http_handler";
 import type { ApiEnvelope } from "@/types/api/api.types";
 import type { TestCatalogItem } from "@/types/test/testCatalog.types";
+import type { ReadingQuestion, ReadingSet, SpeakingTopic } from "@/types/test/test.types";
 
 const mockTests: TestCatalogItem[] = [
   {
@@ -75,6 +76,79 @@ const unwrap = <T>(envelope: ApiEnvelope<T>): T => {
     throw { status: 200, message: envelope.message ?? "Request failed", raw: envelope };
   }
   return envelope.data;
+};
+
+const unwrapMaybeEnvelope = <T>(data: unknown): T => {
+  const maybeEnvelope = data as Partial<ApiEnvelope<unknown>> | null;
+  const isEnvelope =
+    maybeEnvelope &&
+    typeof maybeEnvelope === "object" &&
+    "success" in maybeEnvelope &&
+    "data" in maybeEnvelope;
+  if (isEnvelope) return unwrap(maybeEnvelope as ApiEnvelope<T>);
+  return data as T;
+};
+
+type BackendReadingQuestion = {
+  type: "mcq" | "blank" | "short";
+  question: string;
+  answer?: string;
+  answer_key?: string;
+  options?: string[];
+};
+
+type BackendReading = {
+  id: string;
+  passage: string;
+  questions: BackendReadingQuestion[];
+};
+
+type BackendSpeakingTopic = {
+  id: string;
+  topic: string;
+};
+
+const normalizeReading = (raw: BackendReading, sectionId: string): ReadingSet => {
+  const questions: ReadingQuestion[] = (raw.questions ?? []).map((q, idx) => {
+    const id = `q_${idx + 1}`;
+    const prompt = q.question ?? "";
+    if (q.type === "mcq") {
+      return {
+        id,
+        type: "mcq",
+        prompt,
+        options: q.options ?? [],
+        correctAnswer: q.answer ?? "",
+      };
+    }
+    if (q.type === "blank") {
+      return {
+        id,
+        type: "blank",
+        prompt,
+        correctAnswer: q.answer ?? "",
+      };
+    }
+    return {
+      id,
+      type: "short",
+      prompt,
+      correctAnswer: q.answer_key ?? q.answer ?? "",
+    };
+  });
+
+  return {
+    id: raw.id ?? `reading_${sectionId}`,
+    passage: raw.passage ?? "",
+    questions,
+  };
+};
+
+const normalizeSpeakingTopic = (raw: BackendSpeakingTopic, sectionId: string): SpeakingTopic => {
+  return {
+    id: raw.id ?? `speaking_${sectionId}`,
+    prompt: raw.topic ?? "",
+  };
 };
 
 type StartMyTestResponse = {
@@ -158,6 +232,34 @@ export const testsApi = {
     });
     return unwrap(data);
   },
+  async getReadingBySection(sectionId: string): Promise<ReadingSet> {
+    if (!isApiConfigured) {
+      return {
+        id: `mock_reading_${sectionId}`,
+        passage:
+          "BPO Solutions Group helps organizations improve customer experience by providing skilled teams and modern tools.",
+        questions: [],
+      };
+    }
+    const { data } = await http.get<ApiEnvelope<unknown>>(
+      `/tests/sections/${encodeURIComponent(sectionId)}/reading`,
+    );
+    const body = unwrapMaybeEnvelope<BackendReading>(data);
+    return normalizeReading(body, sectionId);
+  },
+  async getSpeakingTopicBySection(sectionId: string): Promise<SpeakingTopic> {
+    if (!isApiConfigured) {
+      return {
+        id: `mock_speaking_${sectionId}`,
+        prompt: "Talk about a challenge you faced at work and how you solved it.",
+      };
+    }
+    const { data } = await http.get<ApiEnvelope<unknown>>(
+      `/tests/sections/${encodeURIComponent(sectionId)}/speaking-topic`,
+    );
+    const body = unwrapMaybeEnvelope<BackendSpeakingTopic>(data);
+    return normalizeSpeakingTopic(body, sectionId);
+  },
   async get(testId: string): Promise<TestCatalogItem> {
     if (!isApiConfigured) {
       const found = mockTests.find((t) => t.id === testId);
@@ -224,6 +326,21 @@ export const testsApi = {
       {},
     );
     return unwrap(data);
+  },
+  async myTestResults(userTestMappingId: string): Promise<unknown> {
+    if (!isApiConfigured) return { ok: true };
+    const { data } = await http.get<ApiEnvelope<unknown>>(
+      `/tests/my-tests/results/${encodeURIComponent(userTestMappingId)}`,
+    );
+    return unwrapMaybeEnvelope<unknown>(data);
+  },
+  async myTestSectionAudio(userTestMappingId: string, sectionId: string): Promise<Blob> {
+    if (!isApiConfigured) return new Blob();
+    const { data } = await http.get(
+      `/tests/my-tests/audio/${encodeURIComponent(userTestMappingId)}/sections/${encodeURIComponent(sectionId)}`,
+      { responseType: "blob" },
+    );
+    return data as Blob;
   },
   async list(): Promise<TestCatalogItem[]> {
     return this.myTests();

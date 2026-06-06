@@ -143,6 +143,28 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
 
   const proctoring = useProctoring();
 
+  const loadReadingSet = async () => {
+    if (readingSet.value) return readingSet.value;
+    const sectionId = readSectionId(testId, "reading");
+    if (sectionId) {
+      readingSet.value = await testsApi.getReadingBySection(sectionId);
+      return readingSet.value!;
+    }
+    readingSet.value = await testApi.getReadingSet(testType);
+    return readingSet.value!;
+  };
+
+  const loadSpeakingTopic = async () => {
+    if (speakingTopic.value) return speakingTopic.value;
+    const sectionId = readSectionId(testId, "speaking");
+    if (sectionId) {
+      speakingTopic.value = await testsApi.getSpeakingTopicBySection(sectionId);
+      return speakingTopic.value!;
+    }
+    speakingTopic.value = await testApi.getSpeakingTopic(testType);
+    return speakingTopic.value!;
+  };
+
   const canTakeTest = computed(() => {
     const s = session.value;
     if (!s) return false;
@@ -218,7 +240,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     writingTimer.stop();
     if (next.writing && !next.reading) phase.value = "reading";
     readingStartedAt.value = Date.now();
-    if (!readingSet.value) readingSet.value = await testApi.getReadingSet(testType);
+    await loadReadingSet();
     readingTimer.start();
     if (auto) return;
   };
@@ -226,27 +248,27 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const submitReadingInternal = async (auto: boolean) => {
     const s = session.value;
     if (!s || s.status !== "in_progress" || !s.writing || s.reading) return;
-    if (!readingSet.value) readingSet.value = await testApi.getReadingSet(testType);
+    const rs = await loadReadingSet();
     const startedAt = readingStartedAt.value ?? Date.now();
     const submittedAt = Date.now();
 
     const userTestMappingId = readUserTestMappingId(testId);
     const sectionId = readSectionId(testId, "reading");
-    if (userTestMappingId && sectionId && readingSet.value) {
-      const questions = readingSet.value.questions.map((q) => q.prompt);
-      const answers = readingSet.value.questions.map((q) => readingAnswers[q.id] ?? "");
+    if (userTestMappingId && sectionId) {
+      const questions = rs.questions.map((q) => q.prompt);
+      const answers = rs.questions.map((q) => readingAnswers[q.id] ?? "");
       await testsApi.saveAnswers({
         user_test_mapping_id: userTestMappingId,
         questions,
         answers,
         section_id: sectionId,
         changed_windows_count: proctoring.changedWindowsCount.value,
-        test_notes: [readingSet.value.passage],
+        test_notes: [rs.passage],
       });
     }
 
     const next = await testApi.submitReading(testType, {
-      readingSetId: readingSet.value.id,
+      readingSetId: rs.id,
       answers: { ...readingAnswers },
       startedAt,
       submittedAt,
@@ -257,7 +279,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     readingTimer.stop();
     if (next.reading && !next.speaking) phase.value = "speaking";
     speakingStartedAt.value = null;
-    if (!speakingTopic.value) speakingTopic.value = await testApi.getSpeakingTopic(testType);
+    await loadSpeakingTopic();
   };
 
   const submitSpeakingInternal = async (audio: Blob, startedAt: number, auto: boolean) => {
@@ -342,12 +364,12 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
           writingTimer.start();
         }
         if (phase.value === "reading") {
-          readingSet.value = await testApi.getReadingSet(testType);
+          await loadReadingSet();
           readingStartedAt.value = Date.now();
           readingTimer.start();
         }
         if (phase.value === "speaking") {
-          speakingTopic.value = await testApi.getSpeakingTopic(testType);
+          await loadSpeakingTopic();
         }
         if (phase.value === "results") {
           session.value = await testApi.submitTest(testType);
@@ -385,7 +407,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const submitReading = async () => submitReadingInternal(false);
 
   const startSpeaking = async () => {
-    if (!speakingTopic.value) speakingTopic.value = await testApi.getSpeakingTopic(testType);
+    await loadSpeakingTopic();
     speakingStartedAt.value = Date.now();
     speakingTimer.start();
   };

@@ -35,9 +35,6 @@ const onTextInput = (id: string, e: Event) => {
         <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Reading (5 minutes)</h2>
         <p class="mt-1 text-sm text-white/65">Read the passage and answer the questions. Auto-submits when time ends.</p>
       </div>
-      <div class="rounded-2xl border border-white/10 bg-black/35 px-4 py-2 text-sm font-extrabold tracking-[0.6px]">
-        {{ timerLabel }}: <span class="text-[#ff8a1f]">{{ timerValue }}</span>
-      </div>
     </div>
 
     <div class="rounded-3xl border border-white/10 bg-black/30 p-5 text-sm leading-6 text-white/75">

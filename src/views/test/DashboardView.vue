@@ -26,7 +26,7 @@ const statusBadge = (t: TestCatalogItem) => {
   if (s === "in_progress") return "In progress";
   if (s === "submitted") return "Submitted";
   if (s === "in_gradding") return "In grading";
-  if (s === "gradded") return "Graded";
+  if (s === "graded") return "Graded";
   if (s === "failed") return "Failed";
   return String(t.status ?? "");
 };
@@ -40,7 +40,7 @@ const cardAction = (t: TestCatalogItem) => {
   if (s === "not_attempted") {
     return { label: "Start", disabled: false, to: { name: "test", params: { testId: t.id } } };
   }
-  if (s === "in_gradding" || s === "gradded") {
+  if (s === "in_gradding" || s === "graded") {
     return {
       label: "View results",
       disabled: false,

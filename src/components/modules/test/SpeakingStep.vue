@@ -27,6 +27,32 @@ const stopped = ref(false)
 
 const canStart = computed(() => !props.disabled && !recording.value && !stopped.value)
 
+const prepSeconds = 30
+const prepRemaining = ref<number | null>(null)
+let prepInterval: number | null = null
+
+const clearPrep = () => {
+  if (prepInterval) window.clearInterval(prepInterval)
+  prepInterval = null
+  prepRemaining.value = null
+}
+
+const beginPrep = () => {
+  if (recording.value || stopped.value) return
+  if (props.startedAt || props.isTimerRunning) return
+  if (prepInterval) return
+  prepRemaining.value = prepSeconds
+  prepInterval = window.setInterval(() => {
+    if (prepRemaining.value === null) return
+    if (prepRemaining.value <= 1) {
+      clearPrep()
+      void startRecording()
+      return
+    }
+    prepRemaining.value -= 1
+  }, 1000)
+}
+
 const confirmManualSubmit = () => {
   const ok = window.confirm(
     'Submitting will end the Speaking section and submit the full test. You cannot come back after submitting. Continue?',
@@ -51,6 +77,7 @@ const stopRecording = (auto: boolean) => {
 }
 
 const startRecording = async () => {
+  clearPrep()
   permissionError.value = null
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -84,7 +111,20 @@ watch(
   },
 )
 
+watch(
+  () => [props.startedAt, props.isTimerRunning, recording.value, stopped.value] as const,
+  ([startedAt, isTimerRunning, isRecording, isStopped]) => {
+    if (startedAt || isTimerRunning || isRecording || isStopped) {
+      clearPrep()
+      return
+    }
+    beginPrep()
+  },
+  { immediate: true },
+)
+
 onBeforeUnmount(() => {
+  clearPrep()
   if (mediaRecorder.value && mediaRecorder.value.state === 'recording') {
     stopRecording(true)
   }
@@ -98,11 +138,8 @@ onBeforeUnmount(() => {
         <div class="text-xs font-extrabold tracking-[1.8px] text-white/55">SECTION 3</div>
         <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Speaking (3 minutes)</h2>
         <p class="mt-1 text-sm text-white/65">
-          Click start and speak for up to 3 minutes. Recording auto-stops at the end, or you can submit early.
+          You have 30 seconds to prepare. Recording starts automatically, or you can start early. Recording auto-stops at the end.
         </p>
-      </div>
-      <div class="rounded-2xl border border-white/10 bg-black/35 px-4 py-2 text-sm font-extrabold tracking-[0.6px]">
-        {{ timerLabel }}: <span class="text-[#ff8a1f]">{{ timerValue }}</span>
       </div>
     </div>
 
@@ -120,6 +157,9 @@ onBeforeUnmount(() => {
         Status:
         <span v-if="recording" class="text-[#ff8a1f]">Recording…</span>
         <span v-else-if="stopped" class="text-white/70">Uploading…</span>
+        <span v-else-if="typeof prepRemaining === 'number'" class="text-white/70">
+          Starts in {{ prepRemaining }}s
+        </span>
         <span v-else class="text-white/70">Not started</span>
       </div>
 
@@ -132,7 +172,7 @@ onBeforeUnmount(() => {
         >
           Submit Test Now
         </AppButton>
-        <AppButton class="h-10 px-6" :disabled="!canStart" @click="startRecording">Start Recording</AppButton>
+        <AppButton class="h-10 px-6" :disabled="!canStart" @click="startRecording">Start Now</AppButton>
       </div>
     </div>
 
