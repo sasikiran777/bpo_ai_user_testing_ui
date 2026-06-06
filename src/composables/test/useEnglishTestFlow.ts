@@ -1,9 +1,9 @@
 import { computed, reactive, ref, watch } from "vue";
-import { testApi } from "@/apis/test/test.api";
 import { testsApi } from "@/apis/test/tests.api";
 import { useProctoring } from "@/composables/test/useProctoring";
 import { useSectionTimer } from "@/composables/test/useSectionTimer";
 import type { ReadingSet, SpeakingTopic, TestSession, TestType } from "@/types/test/test.types";
+import { deriveUserTestState } from "@/utils/userTestStatus";
 
 type Phase = "intro" | "writing" | "reading" | "speaking" | "results";
 
@@ -146,22 +146,16 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const loadReadingSet = async () => {
     if (readingSet.value) return readingSet.value;
     const sectionId = readSectionId(testId, "reading");
-    if (sectionId) {
-      readingSet.value = await testsApi.getReadingBySection(sectionId);
-      return readingSet.value!;
-    }
-    readingSet.value = await testApi.getReadingSet(testType);
+    if (!sectionId) throw new Error("Missing reading section id");
+    readingSet.value = await testsApi.getReadingBySection(sectionId);
     return readingSet.value!;
   };
 
   const loadSpeakingTopic = async () => {
     if (speakingTopic.value) return speakingTopic.value;
     const sectionId = readSectionId(testId, "speaking");
-    if (sectionId) {
-      speakingTopic.value = await testsApi.getSpeakingTopicBySection(sectionId);
-      return speakingTopic.value!;
-    }
-    speakingTopic.value = await testApi.getSpeakingTopic(testType);
+    if (!sectionId) throw new Error("Missing speaking section id");
+    speakingTopic.value = await testsApi.getSpeakingTopicBySection(sectionId);
     return speakingTopic.value!;
   };
 
@@ -184,21 +178,27 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     return null;
   });
 
-  const computePhaseFromSession = (s: TestSession): Phase => {
-    if (s.status === "not_started") return "intro";
-    if (s.status === "grading" || s.status === "completed" || s.status === "failed")
-      return "results";
-    if (!s.writing) return "writing";
-    if (!s.reading) return "reading";
-    if (!s.speaking) return "speaking";
-    return "results";
+  const setSessionStatusFromBackend = (status: unknown) => {
+    const s = deriveUserTestState({ status });
+    if (!session.value) {
+      session.value = {
+        id: readUserTestMappingId(testId) ?? `sess_${Date.now()}`,
+        testType,
+        status: "not_started",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+    }
+    if (s === "in_gradding") session.value.status = "grading";
+    else if (s === "graded") session.value.status = "completed";
+    else if (s === "failed") session.value.status = "failed";
+    else session.value.status = "not_started";
+    session.value.updatedAt = Date.now();
   };
 
   const submitWritingInternal = async (auto: boolean) => {
     const s = session.value;
-    if (!s || s.status !== "in_progress" || s.writing) return;
-    const startedAt = writingStartedAt.value ?? Date.now();
-    const submittedAt = Date.now();
+    if (!s || s.status !== "in_progress" || phase.value !== "writing") return;
 
     const userTestMappingId = readUserTestMappingId(testId);
     const sectionId = readSectionId(testId, "writing");
@@ -229,28 +229,19 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
       });
     }
 
-    const next = await testApi.submitWriting(testType, {
-      ...writingValues,
-      startedAt,
-      submittedAt,
-      proctoring: [...proctoring.events.value],
-    });
-    session.value = next;
     proctoring.reset();
     writingTimer.stop();
-    if (next.writing && !next.reading) phase.value = "reading";
+    phase.value = "reading";
     readingStartedAt.value = Date.now();
     await loadReadingSet();
     readingTimer.start();
     if (auto) return;
   };
 
-  const submitReadingInternal = async (auto: boolean) => {
+  const submitReadingInternal = async (_auto: boolean) => {
     const s = session.value;
-    if (!s || s.status !== "in_progress" || !s.writing || s.reading) return;
+    if (!s || s.status !== "in_progress" || phase.value !== "reading") return;
     const rs = await loadReadingSet();
-    const startedAt = readingStartedAt.value ?? Date.now();
-    const submittedAt = Date.now();
 
     const userTestMappingId = readUserTestMappingId(testId);
     const sectionId = readSectionId(testId, "reading");
@@ -266,26 +257,16 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
         test_notes: [rs.passage],
       });
     }
-
-    const next = await testApi.submitReading(testType, {
-      readingSetId: rs.id,
-      answers: { ...readingAnswers },
-      startedAt,
-      submittedAt,
-      proctoring: [...proctoring.events.value],
-    });
-    session.value = next;
     proctoring.reset();
     readingTimer.stop();
-    if (next.reading && !next.speaking) phase.value = "speaking";
+    phase.value = "speaking";
     speakingStartedAt.value = null;
     await loadSpeakingTopic();
   };
 
   const submitSpeakingInternal = async (audio: Blob, startedAt: number, auto: boolean) => {
     const s = session.value;
-    if (!s || s.status !== "in_progress" || !s.writing || !s.reading || s.speaking) return;
-    const submittedAt = Date.now();
+    if (!s || s.status !== "in_progress" || phase.value !== "speaking") return;
 
     const userTestMappingId = readUserTestMappingId(testId);
     const sectionId = readSectionId(testId, "speaking");
@@ -301,18 +282,11 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
       audio,
       test_notes: [question],
     });
-
-    await testApi.submitSpeaking(testType, audio, {
-      durationSec: 180,
-      startedAt,
-      submittedAt,
-      proctoring: [...proctoring.events.value],
-    });
-    proctoring.reset();
     speakingTimer.stop();
-    const next = await testApi.submitTest(testType);
-    session.value = next;
+    proctoring.reset();
     proctoring.stop();
+    s.status = "grading";
+    s.updatedAt = Date.now();
     phase.value = "results";
     if (auto) return;
   };
@@ -333,49 +307,15 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     loading.value = true;
     error.value = null;
     try {
-      const [s, i] = await Promise.all([
-        testApi.getOrCreateSession(testType),
-        testApi.getInstructions(testType),
-      ]);
-      session.value = s;
-      instructions.value = i;
-      phase.value = computePhaseFromSession(s);
-      if (s.status === "not_started") {
-        sessionStorage.removeItem(mappingKey(testId));
-      }
-
-      if (s.writing) {
-        writingValues.aboutMe = s.writing.aboutMe;
-        writingValues.location = s.writing.location;
-        writingValues.experience = s.writing.experience;
-        writingValues.roles = s.writing.roles;
-        writingValues.responsibilities = s.writing.responsibilities;
-        writingValues.other = s.writing.other;
-      }
-
-      if (s.reading) {
-        Object.assign(readingAnswers, s.reading.answers);
-      }
-
-      if (s.status === "in_progress") {
-        proctoring.start();
-        if (phase.value === "writing") {
-          writingStartedAt.value = Date.now();
-          writingTimer.start();
-        }
-        if (phase.value === "reading") {
-          await loadReadingSet();
-          readingStartedAt.value = Date.now();
-          readingTimer.start();
-        }
-        if (phase.value === "speaking") {
-          await loadSpeakingTopic();
-        }
-        if (phase.value === "results") {
-          session.value = await testApi.submitTest(testType);
-          proctoring.stop();
-        }
-      }
+      const tests = await testsApi.myTests();
+      const t = tests.find((x) => x.id === testId);
+      setSessionStatusFromBackend(t?.status);
+      phase.value =
+        session.value?.status === "grading" ||
+        session.value?.status === "completed" ||
+        session.value?.status === "failed"
+          ? "results"
+          : "intro";
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Failed to load test";
     } finally {
@@ -384,18 +324,37 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   };
 
   const start = async () => {
-    const s = await testApi.startSession(testType);
-    session.value = s;
+    session.value = {
+      id: readUserTestMappingId(testId) ?? `sess_${Date.now()}`,
+      testType,
+      status: "in_progress",
+      currentSection: "writing",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
     proctoring.reset();
     proctoring.start();
-    phase.value = computePhaseFromSession(s);
+    phase.value = "writing";
     writingStartedAt.value = Date.now();
     resetWritingTyping();
     writingTimer.start();
   };
 
   const abandon = async (reason: string) => {
-    session.value = await testApi.markAttemptFailed(testType, reason);
+    if (!session.value) {
+      session.value = {
+        id: readUserTestMappingId(testId) ?? `sess_${Date.now()}`,
+        testType,
+        status: "failed",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        failedReason: reason,
+      };
+    } else {
+      session.value.status = "failed";
+      session.value.failedReason = reason;
+      session.value.updatedAt = Date.now();
+    }
     proctoring.stop();
     writingTimer.stop();
     readingTimer.stop();

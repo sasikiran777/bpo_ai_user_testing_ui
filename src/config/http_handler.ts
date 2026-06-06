@@ -1,37 +1,36 @@
-import axios, { AxiosError } from 'axios'
+import axios, { AxiosError } from "axios";
 
 export const apiBaseUrl = (
   import.meta.env.VITE_API_URL ??
   import.meta.env.VITE_API_BASE_URL ??
-  ''
-).trim()
-export const isApiConfigured = apiBaseUrl.length > 0
+  ""
+).trim();
 
 export const http = axios.create({
   baseURL: apiBaseUrl || undefined,
   timeout: 30_000,
-})
+});
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token')
+  const token = localStorage.getItem("auth_token");
 
   if (token) {
-    config.headers = config.headers ?? {}
-    config.headers.Authorization = `Bearer ${token}`
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
   }
 
   const isForm =
-    typeof FormData !== 'undefined' &&
-    typeof config.data !== 'undefined' &&
-    config.data instanceof FormData
+    typeof FormData !== "undefined" &&
+    typeof config.data !== "undefined" &&
+    config.data instanceof FormData;
 
   if (isForm) {
-    config.headers = config.headers ?? {}
-    delete (config.headers as Record<string, unknown>)['Content-Type']
+    config.headers = config.headers ?? {};
+    delete (config.headers as Record<string, unknown>)["Content-Type"];
   }
 
-  return config
-})
+  return config;
+});
 
 http.interceptors.response.use(
   (response) => response,
@@ -39,12 +38,12 @@ http.interceptors.response.use(
     const message =
       (error.response?.data as { message?: string } | undefined)?.message ||
       error.message ||
-      'Request failed'
+      "Request failed";
 
     return Promise.reject({
       status: error.response?.status,
       message,
       raw: error,
-    })
+    });
   },
-)
+);
