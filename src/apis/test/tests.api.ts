@@ -1,7 +1,12 @@
 import { apiBaseUrl, http } from "@/config/http_handler";
 import type { ApiEnvelope } from "@/types/api/api.types";
 import type { TestCatalogItem } from "@/types/test/testCatalog.types";
-import type { ReadingQuestion, ReadingSet, SpeakingTopic } from "@/types/test/test.types";
+import type {
+  ReadingQuestion,
+  ReadingSet,
+  SpeakingTopic,
+  WritingTopic,
+} from "@/types/test/test.types";
 
 const unwrap = <T>(envelope: ApiEnvelope<T>): T => {
   if (!envelope.success) {
@@ -36,6 +41,11 @@ type BackendReading = {
 };
 
 type BackendSpeakingTopic = {
+  id: string;
+  topic: string;
+};
+
+type BackendWritingTopic = {
   id: string;
   topic: string;
 };
@@ -79,6 +89,13 @@ const normalizeReading = (raw: BackendReading, sectionId: string): ReadingSet =>
 const normalizeSpeakingTopic = (raw: BackendSpeakingTopic, sectionId: string): SpeakingTopic => {
   return {
     id: raw.id ?? `speaking_${sectionId}`,
+    prompt: raw.topic ?? "",
+  };
+};
+
+const normalizeWritingTopic = (raw: BackendWritingTopic, sectionId: string): WritingTopic => {
+  return {
+    id: raw.id ?? `writing_${sectionId}`,
     prompt: raw.topic ?? "",
   };
 };
@@ -174,6 +191,13 @@ export const testsApi = {
     );
     const body = unwrapMaybeEnvelope<BackendSpeakingTopic>(data);
     return normalizeSpeakingTopic(body, sectionId);
+  },
+  async getWritingTopicBySection(sectionId: string): Promise<WritingTopic> {
+    const { data } = await http.get<ApiEnvelope<unknown>>(
+      `/tests/sections/${encodeURIComponent(sectionId)}/writing-topic`,
+    );
+    const body = unwrapMaybeEnvelope<BackendWritingTopic>(data);
+    return normalizeWritingTopic(body, sectionId);
   },
   async get(testId: string): Promise<TestCatalogItem> {
     const { data } = await http.get<ApiEnvelope<TestCatalogItem>>(`/tests/${testId}`);

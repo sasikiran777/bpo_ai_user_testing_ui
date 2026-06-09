@@ -4,6 +4,8 @@ import InstructionsStep from "@/components/modules/test/InstructionsStep.vue";
 import WritingStep from "@/components/modules/test/WritingStep.vue";
 import ReadingStep from "@/components/modules/test/ReadingStep.vue";
 import SpeakingStep from "@/components/modules/test/SpeakingStep.vue";
+import ReadAloudStep from "@/components/modules/test/ReadAloudStep.vue";
+import EmailWritingStep from "@/components/modules/test/EmailWritingStep.vue";
 import { useAttemptLeaveGuard } from "@/composables/test/useAttemptLeaveGuard";
 import { useEnglishTestFlow } from "@/composables/test/useEnglishTestFlow";
 import { testsApi } from "@/apis/test/tests.api";
@@ -26,10 +28,12 @@ const sectionsKey = (id: string) => `bpo_test_sections:${id}`;
 const storeSectionIds = (t: TestCatalogItem) => {
   const map: Record<string, string> = {};
   for (const s of t.sections ?? []) {
-    const n = s.name.toLowerCase();
-    if (n.includes("write")) map.writing = s.id;
-    else if (n.includes("read")) map.reading = s.id;
-    else if (n.includes("speak")) map.speaking = s.id;
+    const n = s.name.trim().toLowerCase();
+    if (n === "write") map.writing = s.id;
+    else if (n === "read") map.reading = s.id;
+    else if (n === "speak") map.speaking = s.id;
+    else if (n === "read aloud") map.readAloud = s.id;
+    else if (n === "email writing") map.emailWriting = s.id;
   }
   sessionStorage.setItem(sectionsKey(testId), JSON.stringify(map));
 };
@@ -41,13 +45,18 @@ const {
   instructions,
   readingSet,
   speakingTopic,
+  readAloudTopic,
+  emailWritingTopic,
   phase,
   writingValues,
   readingAnswers,
+  emailWritingValue,
   isLocked,
   writingTimer,
   readingTimer,
   speakingTimer,
+  readAloudTimer,
+  emailWritingTimer,
   activeTimerLabel,
   init,
   start,
@@ -57,7 +66,12 @@ const {
   startSpeaking,
   submitSpeaking,
   finalizeSpeakingAuto,
+  startReadAloud,
+  submitReadAloud,
+  finalizeReadAloudAuto,
+  submitEmailWriting,
   speakingStartedAt,
+  readAloudStartedAt,
 } = useEnglishTestFlow(testType, testId);
 
 const confirmAndSubmit = async (message: string, fn: () => Promise<void>) => {
@@ -80,6 +94,23 @@ const onSubmitReading = async () => {
   );
 };
 
+const onSubmitEmailWriting = async () => {
+  if (!emailWritingValue.value.trim()) {
+    error.value = "Please write your email response before submitting.";
+    return;
+  }
+
+  await confirmAndSubmit(
+    "Submitting Email Writing will finish your test. You cannot come back after submitting. Continue?",
+    submitEmailWriting,
+  );
+};
+
+const onUpdateEmailWriting = (value: string) => {
+  emailWritingValue.value = value;
+  error.value = null;
+};
+
 const startLoading = ref(false);
 
 const onStart = async () => {
@@ -95,23 +126,6 @@ const onStart = async () => {
     }
     sessionStorage.setItem(mappingKey(testId), mappingId);
 
-    const rawSections = sessionStorage.getItem(sectionsKey(testId));
-    const sections = rawSections
-      ? (JSON.parse(rawSections) as Record<string, string | undefined>)
-      : {};
-    const readingSectionId = sections.reading;
-    const speakingSectionId = sections.speaking;
-    if (!readingSectionId || !speakingSectionId) {
-      throw new Error("Missing section ids for reading/speaking");
-    }
-
-    const [rs, topic] = await Promise.all([
-      testsApi.getReadingBySection(readingSectionId),
-      testsApi.getSpeakingTopicBySection(speakingSectionId),
-    ]);
-    readingSet.value = rs;
-    speakingTopic.value = topic;
-
     await start();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to start test";
@@ -123,8 +137,18 @@ const onStart = async () => {
 const leaveWarningEnabled = computed(
   () =>
     session.value?.status === "in_progress" &&
-    (phase.value === "writing" || phase.value === "reading" || phase.value === "speaking"),
+    ["writing", "reading", "speaking", "readAloud", "emailWriting"].includes(phase.value),
 );
+
+const phaseTitle = computed(() => {
+  if (phase.value === "intro") return "Instructions";
+  if (phase.value === "writing") return "Writing";
+  if (phase.value === "reading") return "Reading";
+  if (phase.value === "speaking") return "Speaking";
+  if (phase.value === "readAloud") return "Read Aloud";
+  if (phase.value === "emailWriting") return "Email Writing";
+  return "Results";
+});
 
 let dropCalledOnUnload = false;
 
@@ -185,11 +209,7 @@ onMounted(async () => {
             {{ (test?.name ?? "TEST").toUpperCase() }}
           </div>
           <div class="mt-2 text-2xl font-extrabold tracking-[-0.4px]">
-            <span v-if="phase === 'intro'">Instructions</span>
-            <span v-else-if="phase === 'writing'">Writing</span>
-            <span v-else-if="phase === 'reading'">Reading</span>
-            <span v-else-if="phase === 'speaking'">Speaking</span>
-            <span v-else>Results</span>
+            {{ phaseTitle }}
           </div>
           <div v-if="session" class="mt-1 text-xs font-bold text-white/55">
             Session: {{ session.id }} · Status: {{ session.status }}
@@ -205,6 +225,8 @@ onMounted(async () => {
             <span v-if="phase === 'writing'">{{ writingTimer.format.value }}</span>
             <span v-else-if="phase === 'reading'">{{ readingTimer.format.value }}</span>
             <span v-else-if="phase === 'speaking'">{{ speakingTimer.format.value }}</span>
+            <span v-else-if="phase === 'readAloud'">{{ readAloudTimer.format.value }}</span>
+            <span v-else-if="phase === 'emailWriting'">{{ emailWritingTimer.format.value }}</span>
           </span>
         </div>
       </div>
@@ -261,6 +283,29 @@ onMounted(async () => {
         @start="startSpeaking()"
         @submit="(blob) => submitSpeaking(blob)"
         @auto-submit="(blob, startedAt) => finalizeSpeakingAuto(blob, startedAt)"
+      />
+
+      <ReadAloudStep
+        v-else-if="phase === 'readAloud' && readAloudTopic"
+        timer-label="Time left"
+        :timer-value="readAloudTimer.format.value"
+        :topic="readAloudTopic"
+        :started-at="readAloudStartedAt"
+        :is-timer-running="readAloudTimer.isRunning.value"
+        :is-expired="readAloudTimer.isExpired.value"
+        @start="startReadAloud()"
+        @submit="(blob) => submitReadAloud(blob)"
+        @auto-submit="(blob, startedAt) => finalizeReadAloudAuto(blob, startedAt)"
+      />
+
+      <EmailWritingStep
+        v-else-if="phase === 'emailWriting' && emailWritingTopic"
+        timer-label="Time left"
+        :timer-value="emailWritingTimer.format.value"
+        :prompt="emailWritingTopic.prompt"
+        :value="emailWritingValue"
+        @update:value="onUpdateEmailWriting"
+        @submit="onSubmitEmailWriting()"
       />
 
       <div v-else class="rounded-3xl border border-white/10 bg-black/25 p-6 text-sm text-white/70">

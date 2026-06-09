@@ -24,8 +24,6 @@ const audioBySectionId = ref<
 
 const status = computed(() => deriveUserTestState(myTest.value ?? {}));
 
-type Score = { score: number; maxScore: number };
-
 type BackendResultSection = {
   id: string;
   name: string;
@@ -61,30 +59,30 @@ const resolved = computed(() => {
   )
     return null;
 
-  const pick = (kind: "writing" | "reading" | "speaking"): BackendResultSection | null => {
-    const found = obj.sections?.find((s) => {
-      const n = String(s?.name ?? "").toLowerCase();
-      if (kind === "writing") return n.includes("write");
-      if (kind === "reading") return n.includes("read");
-      return n.includes("speak");
-    });
-    return found ?? null;
-  };
-
-  const score = (s: BackendResultSection | null): Score => ({
-    score: Number(s?.marks_obtained ?? 0),
-    maxScore: Number(s?.max_marks ?? 0),
-  });
-
   return {
     overall: { score: obj.total_marks_obtained, maxScore: obj.total_max_marks },
-    writing: score(pick("writing")),
-    reading: score(pick("reading")),
-    speaking: score(pick("speaking")),
     startedAt: obj.user_test_mapping?.started_at ?? null,
     completedAt: obj.user_test_mapping?.completed_at ?? null,
     sections: obj.sections,
   };
+});
+
+const summaryCards = computed(() => {
+  if (!resolved.value) return [];
+  return [
+    {
+      key: "overall",
+      label: "Overall",
+      score: resolved.value.overall.score,
+      maxScore: resolved.value.overall.maxScore,
+    },
+    ...resolved.value.sections.map((section) => ({
+      key: section.id,
+      label: section.name,
+      score: Number(section.marks_obtained ?? 0),
+      maxScore: Number(section.max_marks ?? 0),
+    })),
+  ];
 });
 
 const formatDateTime = (iso: string) => {
@@ -106,7 +104,7 @@ const isAudioString = (v: string) =>
 
 const shouldLoadAudio = (sec: BackendResultSection) => {
   const n = String(sec.name ?? "").toLowerCase();
-  if (n.includes("speak")) return true;
+  if (n.includes("speak") || n.includes("read aloud")) return true;
   return (sec.answers ?? []).some((a) => typeof a === "string" && isAudioString(a));
 };
 
@@ -280,33 +278,17 @@ onBeforeUnmount(() => {
           {{ resultsError }}
         </div>
         <div v-else-if="resolved" class="grid gap-4">
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur">
-              <div class="text-xs font-extrabold tracking-[1.6px] text-white/55">OVERALL</div>
-              <div class="mt-2 text-3xl font-extrabold text-white">
-                {{ resolved.overall.score
-                }}<span class="text-white/55">/{{ resolved.overall.maxScore }}</span>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="card in summaryCards"
+              :key="card.key"
+              class="rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur"
+            >
+              <div class="text-xs font-extrabold tracking-[1.6px] text-white/55">
+                {{ card.label.toUpperCase() }}
               </div>
-            </div>
-            <div class="rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur">
-              <div class="text-xs font-extrabold tracking-[1.6px] text-white/55">WRITING</div>
               <div class="mt-2 text-3xl font-extrabold text-white">
-                {{ resolved.writing.score
-                }}<span class="text-white/55">/{{ resolved.writing.maxScore }}</span>
-              </div>
-            </div>
-            <div class="rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur">
-              <div class="text-xs font-extrabold tracking-[1.6px] text-white/55">READING</div>
-              <div class="mt-2 text-3xl font-extrabold text-white">
-                {{ resolved.reading.score
-                }}<span class="text-white/55">/{{ resolved.reading.maxScore }}</span>
-              </div>
-            </div>
-            <div class="rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur">
-              <div class="text-xs font-extrabold tracking-[1.6px] text-white/55">SPEAKING</div>
-              <div class="mt-2 text-3xl font-extrabold text-white">
-                {{ resolved.speaking.score
-                }}<span class="text-white/55">/{{ resolved.speaking.maxScore }}</span>
+                {{ card.score }}<span class="text-white/55">/{{ card.maxScore }}</span>
               </div>
             </div>
           </div>

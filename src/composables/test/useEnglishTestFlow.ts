@@ -2,13 +2,30 @@ import { computed, reactive, ref, watch } from "vue";
 import { testsApi } from "@/apis/test/tests.api";
 import { useProctoring } from "@/composables/test/useProctoring";
 import { useSectionTimer } from "@/composables/test/useSectionTimer";
-import type { ReadingSet, SpeakingTopic, TestSession, TestType } from "@/types/test/test.types";
+import type {
+  EnglishSection,
+  ReadingSet,
+  SpeakingTopic,
+  TestSession,
+  TestType,
+  WritingTopic,
+} from "@/types/test/test.types";
 import { deriveUserTestState } from "@/utils/userTestStatus";
 
-type Phase = "intro" | "writing" | "reading" | "speaking" | "results";
+type Phase = "intro" | EnglishSection | "results";
+type WritingQuestionKey =
+  | "aboutMe"
+  | "location"
+  | "experience"
+  | "roles"
+  | "responsibilities"
+  | "other";
+type SectionWithAudio = "speaking" | "readAloud";
+type TestPhase = Exclude<Phase, "intro" | "results">;
 
 const mappingKey = (testId: string) => `bpo_user_test_mapping_id:${testId}`;
 const sectionsKey = (testId: string) => `bpo_test_sections:${testId}`;
+const orderedPhases: TestPhase[] = ["writing", "reading", "speaking", "readAloud", "emailWriting"];
 
 const readUserTestMappingId = (testId: string) => {
   const raw = sessionStorage.getItem(mappingKey(testId));
@@ -16,7 +33,7 @@ const readUserTestMappingId = (testId: string) => {
   return raw;
 };
 
-const readSectionId = (testId: string, section: "writing" | "reading" | "speaking") => {
+const readSectionId = (testId: string, section: EnglishSection) => {
   const raw = sessionStorage.getItem(sectionsKey(testId));
   if (!raw) return null;
   try {
@@ -35,6 +52,8 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const instructions = ref<{ title: string; bullets: string[] } | null>(null);
   const readingSet = ref<ReadingSet | null>(null);
   const speakingTopic = ref<SpeakingTopic | null>(null);
+  const readAloudTopic = ref<SpeakingTopic | null>(null);
+  const emailWritingTopic = ref<WritingTopic | null>(null);
 
   const phase = ref<Phase>("intro");
 
@@ -66,11 +85,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     }
   };
 
-  const recordWritingTyping = (
-    key: keyof typeof writingTyping,
-    value: string,
-    nowTs = Date.now(),
-  ) => {
+  const recordWritingTyping = (key: WritingQuestionKey, value: string, nowTs = Date.now()) => {
     const s = writingTyping[key];
     const len = value.length;
     if (!s.firstTs) s.firstTs = nowTs;
@@ -136,10 +151,13 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   };
 
   const readingAnswers = reactive<Record<string, string>>({});
+  const emailWritingValue = ref("");
 
   const writingStartedAt = ref<number | null>(null);
   const readingStartedAt = ref<number | null>(null);
   const speakingStartedAt = ref<number | null>(null);
+  const readAloudStartedAt = ref<number | null>(null);
+  const emailWritingStartedAt = ref<number | null>(null);
 
   const proctoring = useProctoring();
 
@@ -159,6 +177,32 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     return speakingTopic.value!;
   };
 
+  const loadReadAloudTopic = async () => {
+    if (readAloudTopic.value) return readAloudTopic.value;
+    const sectionId = readSectionId(testId, "readAloud");
+    if (!sectionId) throw new Error("Missing Read Aloud section id");
+    readAloudTopic.value = await testsApi.getSpeakingTopicBySection(sectionId);
+    return readAloudTopic.value!;
+  };
+
+  const loadEmailWritingTopic = async () => {
+    if (emailWritingTopic.value) return emailWritingTopic.value;
+    const sectionId = readSectionId(testId, "emailWriting");
+    if (!sectionId) throw new Error("Missing Email Writing section id");
+    emailWritingTopic.value = await testsApi.getWritingTopicBySection(sectionId);
+    return emailWritingTopic.value!;
+  };
+
+  const getAvailablePhases = () =>
+    orderedPhases.filter((entry) => entry === "writing" || !!readSectionId(testId, entry));
+
+  const getNextPhase = (current: TestPhase): TestPhase | null => {
+    const available = getAvailablePhases();
+    const index = available.indexOf(current);
+    if (index === -1) return null;
+    return available[index + 1] ?? null;
+  };
+
   const canTakeTest = computed(() => {
     const s = session.value;
     if (!s) return false;
@@ -175,6 +219,8 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     if (phase.value === "writing") return "Writing";
     if (phase.value === "reading") return "Reading";
     if (phase.value === "speaking") return "Speaking";
+    if (phase.value === "readAloud") return "Read Aloud";
+    if (phase.value === "emailWriting") return "Email Writing";
     return null;
   });
 
@@ -194,6 +240,67 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     else if (s === "failed") session.value.status = "failed";
     else session.value.status = "not_started";
     session.value.updatedAt = Date.now();
+  };
+
+  const completeTest = () => {
+    if (!session.value) return;
+    writingTimer.stop();
+    readingTimer.stop();
+    speakingTimer.stop();
+    readAloudTimer.stop();
+    emailWritingTimer.stop();
+    proctoring.reset();
+    proctoring.stop();
+    session.value.status = "grading";
+    session.value.updatedAt = Date.now();
+    phase.value = "results";
+  };
+
+  const enterPhase = async (nextPhase: TestPhase) => {
+    if (!session.value) return;
+
+    session.value.currentSection = nextPhase;
+    session.value.updatedAt = Date.now();
+    phase.value = nextPhase;
+
+    if (nextPhase === "writing") {
+      writingStartedAt.value = Date.now();
+      resetWritingTyping();
+      writingTimer.start();
+      return;
+    }
+
+    if (nextPhase === "reading") {
+      readingStartedAt.value = Date.now();
+      await loadReadingSet();
+      readingTimer.start();
+      return;
+    }
+
+    if (nextPhase === "speaking") {
+      speakingStartedAt.value = null;
+      await loadSpeakingTopic();
+      return;
+    }
+
+    if (nextPhase === "readAloud") {
+      readAloudStartedAt.value = null;
+      await loadReadAloudTopic();
+      return;
+    }
+
+    emailWritingStartedAt.value = Date.now();
+    await loadEmailWritingTopic();
+    emailWritingTimer.start();
+  };
+
+  const advancePhase = async (current: TestPhase) => {
+    const next = getNextPhase(current);
+    if (!next) {
+      completeTest();
+      return;
+    }
+    await enterPhase(next);
   };
 
   const submitWritingInternal = async (auto: boolean) => {
@@ -231,10 +338,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
 
     proctoring.reset();
     writingTimer.stop();
-    phase.value = "reading";
-    readingStartedAt.value = Date.now();
-    await loadReadingSet();
-    readingTimer.start();
+    await advancePhase("writing");
     if (auto) return;
   };
 
@@ -259,20 +363,25 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     }
     proctoring.reset();
     readingTimer.stop();
-    phase.value = "speaking";
-    speakingStartedAt.value = null;
-    await loadSpeakingTopic();
+    await advancePhase("reading");
   };
 
-  const submitSpeakingInternal = async (audio: Blob, startedAt: number, auto: boolean) => {
+  const submitAudioSectionInternal = async (
+    section: SectionWithAudio,
+    audio: Blob,
+    _startedAt: number,
+    auto: boolean,
+  ) => {
     const s = session.value;
-    if (!s || s.status !== "in_progress" || phase.value !== "speaking") return;
+    if (!s || s.status !== "in_progress" || phase.value !== section) return;
 
     const userTestMappingId = readUserTestMappingId(testId);
-    const sectionId = readSectionId(testId, "speaking");
-    const question = speakingTopic.value?.prompt ?? "Speaking";
+    const sectionId = readSectionId(testId, section);
+    const question =
+      (section === "speaking" ? speakingTopic.value?.prompt : readAloudTopic.value?.prompt) ??
+      (section === "speaking" ? "Speaking" : "Read Aloud");
     if (!userTestMappingId || !sectionId) {
-      throw new Error("Missing user_test_mapping_id or section_id for speaking submission");
+      throw new Error("Missing user_test_mapping_id or section_id for audio submission");
     }
     await testsApi.saveAudioAnswer({
       user_test_mapping_id: userTestMappingId,
@@ -282,12 +391,37 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
       audio,
       test_notes: [question],
     });
-    speakingTimer.stop();
+    if (section === "speaking") speakingTimer.stop();
+    else readAloudTimer.stop();
     proctoring.reset();
-    proctoring.stop();
-    s.status = "grading";
-    s.updatedAt = Date.now();
-    phase.value = "results";
+    await advancePhase(section);
+    if (auto) return;
+  };
+
+  const submitEmailWritingInternal = async (auto: boolean) => {
+    const s = session.value;
+    if (!s || s.status !== "in_progress" || phase.value !== "emailWriting") return;
+
+    const userTestMappingId = readUserTestMappingId(testId);
+    const sectionId = readSectionId(testId, "emailWriting");
+    const prompt = (await loadEmailWritingTopic()).prompt;
+
+    if (userTestMappingId && sectionId) {
+      await testsApi.saveAnswers({
+        user_test_mapping_id: userTestMappingId,
+        questions: [prompt],
+        answers: [emailWritingValue.value],
+        section_id: sectionId,
+        changed_windows_count: proctoring.changedWindowsCount.value,
+        test_notes: [
+          "Recommended structure: subject, greeting, body, closing",
+          "Scoring focus: task relevance, clarity, organization, tone, grammar, spelling",
+        ],
+      });
+    }
+
+    emailWritingTimer.stop();
+    completeTest();
     if (auto) return;
   };
 
@@ -302,6 +436,11 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   });
 
   const speakingTimer = useSectionTimer(180);
+  const readAloudTimer = useSectionTimer(90);
+  const emailWritingTimer = useSectionTimer(300, () => {
+    if (phase.value !== "emailWriting") return;
+    void submitEmailWritingInternal(true);
+  });
 
   const init = async () => {
     loading.value = true;
@@ -334,10 +473,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     };
     proctoring.reset();
     proctoring.start();
-    phase.value = "writing";
-    writingStartedAt.value = Date.now();
-    resetWritingTyping();
-    writingTimer.start();
+    await enterPhase(getAvailablePhases()[0] ?? "writing");
   };
 
   const abandon = async (reason: string) => {
@@ -359,6 +495,8 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     writingTimer.stop();
     readingTimer.stop();
     speakingTimer.stop();
+    readAloudTimer.stop();
+    emailWritingTimer.stop();
     phase.value = "results";
   };
 
@@ -371,13 +509,31 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     speakingTimer.start();
   };
 
+  const startReadAloud = async () => {
+    await loadReadAloudTopic();
+    if (!readAloudStartedAt.value) {
+      readAloudStartedAt.value = Date.now();
+      readAloudTimer.start();
+    }
+  };
+
   const submitSpeaking = async (audio: Blob) => {
     const startedAt = speakingStartedAt.value ?? Date.now();
-    await submitSpeakingInternal(audio, startedAt, false);
+    await submitAudioSectionInternal("speaking", audio, startedAt, false);
   };
 
   const finalizeSpeakingAuto = async (audio: Blob, startedAt: number) =>
-    submitSpeakingInternal(audio, startedAt, true);
+    submitAudioSectionInternal("speaking", audio, startedAt, true);
+
+  const submitReadAloud = async (audio: Blob) => {
+    const startedAt = readAloudStartedAt.value ?? Date.now();
+    await submitAudioSectionInternal("readAloud", audio, startedAt, false);
+  };
+
+  const finalizeReadAloudAuto = async (audio: Blob, startedAt: number) =>
+    submitAudioSectionInternal("readAloud", audio, startedAt, true);
+
+  const submitEmailWriting = async () => submitEmailWritingInternal(false);
 
   watch(
     () => writingValues.aboutMe,
@@ -411,15 +567,20 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     instructions,
     readingSet,
     speakingTopic,
+    readAloudTopic,
+    emailWritingTopic,
     phase,
     writingValues,
     readingAnswers,
+    emailWritingValue,
     canTakeTest,
     isLocked,
     proctoring,
     writingTimer,
     readingTimer,
     speakingTimer,
+    readAloudTimer,
+    emailWritingTimer,
     activeTimerLabel,
     init,
     start,
@@ -429,6 +590,11 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     startSpeaking,
     submitSpeaking,
     finalizeSpeakingAuto,
+    startReadAloud,
+    submitReadAloud,
+    finalizeReadAloudAuto,
+    submitEmailWriting,
     speakingStartedAt,
+    readAloudStartedAt,
   };
 };
