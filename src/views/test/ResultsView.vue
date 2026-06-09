@@ -87,6 +87,20 @@ const resolved = computed(() => {
   };
 });
 
+const formatDateTime = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(d);
+};
+
 const isAudioString = (v: string) =>
   /\.(webm|wav|mp3|m4a|ogg)(\?.*)?$/i.test(v) || v.toLowerCase().includes("storage/audio/");
 
@@ -301,9 +315,9 @@ onBeforeUnmount(() => {
             v-if="resolved.startedAt || resolved.completedAt"
             class="rounded-3xl border border-white/10 bg-black/25 p-6 text-sm text-white/70 backdrop-blur"
           >
-            <div v-if="resolved.startedAt">Started: {{ resolved.startedAt }}</div>
+            <div v-if="resolved.startedAt">Started: {{ formatDateTime(resolved.startedAt) }}</div>
             <div v-if="resolved.completedAt" class="mt-1">
-              Completed: {{ resolved.completedAt }}
+              Completed: {{ formatDateTime(resolved.completedAt) }}
             </div>
           </div>
 

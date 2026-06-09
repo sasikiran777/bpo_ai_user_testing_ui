@@ -35,13 +35,24 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
+    const status = error.response?.status;
+    if (status === 401) {
+      localStorage.removeItem("auth_token");
+      const base = (import.meta.env.BASE_URL ?? "/").toString();
+      const loginUrl = base.endsWith("/") ? `${base}login` : `${base}/login`;
+      const path = window.location.pathname;
+      if (!path.endsWith("/login") && !path.endsWith("/register")) {
+        window.location.replace(loginUrl);
+      }
+    }
+
     const message =
       (error.response?.data as { message?: string } | undefined)?.message ||
       error.message ||
       "Request failed";
 
     return Promise.reject({
-      status: error.response?.status,
+      status,
       message,
       raw: error,
     });
