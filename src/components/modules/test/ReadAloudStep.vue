@@ -28,6 +28,33 @@ const permissionError = ref<string | null>(null);
 const recordedBlob = ref<Blob | null>(null);
 const previewUrl = ref<string | null>(null);
 
+const prepSeconds = 30;
+const prepRemaining = ref<number | null>(null);
+let prepInterval: number | null = null;
+
+const clearPrep = () => {
+  if (prepInterval) window.clearInterval(prepInterval);
+  prepInterval = null;
+  prepRemaining.value = null;
+};
+
+const beginPrep = () => {
+  if (props.disabled || props.isExpired) return;
+  if (props.startedAt || props.isTimerRunning) return;
+  if (recording.value || submitting.value) return;
+  if (prepInterval) return;
+  prepRemaining.value = prepSeconds;
+  prepInterval = window.setInterval(() => {
+    if (prepRemaining.value === null) return;
+    if (prepRemaining.value <= 1) {
+      clearPrep();
+      void startRecording();
+      return;
+    }
+    prepRemaining.value -= 1;
+  }, 1000);
+};
+
 const revokePreview = () => {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   previewUrl.value = null;
@@ -110,6 +137,7 @@ const stopRecording = (auto: boolean) => {
 };
 
 const startRecording = async () => {
+  clearPrep();
   if (!canStartRecording.value && !canRerecord.value) return;
 
   permissionError.value = null;
@@ -174,6 +202,7 @@ watch(
   () => props.isExpired,
   (expired) => {
     if (!expired) return;
+    clearPrep();
     if (recording.value) {
       stopRecording(true);
       return;
@@ -182,7 +211,27 @@ watch(
   },
 );
 
+watch(
+  () =>
+    [
+      props.startedAt,
+      props.isTimerRunning,
+      props.disabled,
+      props.isExpired,
+      recording.value,
+    ] as const,
+  ([startedAt, isTimerRunning, disabled, isExpired, isRecording]) => {
+    if (disabled || isExpired || startedAt || isTimerRunning || isRecording || submitting.value) {
+      clearPrep();
+      return;
+    }
+    beginPrep();
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
+  clearPrep();
   if (recording.value) stopRecording(true);
   else finalizeRecorderState();
   revokePreview();
@@ -204,6 +253,17 @@ onBeforeUnmount(() => {
     <div class="rounded-3xl border border-white/10 bg-black/30 p-5">
       <div class="text-sm font-semibold text-white/85">Passage</div>
       <div class="mt-2 whitespace-pre-line text-sm leading-6 text-white/75">{{ topic.prompt }}</div>
+    </div>
+
+    <div
+      v-if="!recording && !recordedBlob && typeof prepRemaining === 'number'"
+      class="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/75"
+    >
+      Starting in <span class="font-extrabold text-[#ff8a1f]">{{ prepRemaining }}s</span>. Recording
+      will start automatically, or you can start now.
+      <AppButton variant="secondary" class="ml-3 h-9 px-4" @click="startRecording"
+        >Start Now</AppButton
+      >
     </div>
 
     <div

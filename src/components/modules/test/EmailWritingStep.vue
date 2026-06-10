@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import AppButton from "@/components/ui/AppButton.vue";
-import { computed } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 
 const props = defineProps<{
   timerLabel: string;
@@ -8,12 +8,49 @@ const props = defineProps<{
   disabled?: boolean;
   prompt: string;
   value: string;
+  startedAt: number | null;
+  isTimerRunning: boolean;
+  isExpired: boolean;
 }>();
 
 const emit = defineEmits<{
+  (e: "start"): void;
   (e: "submit"): void;
   (e: "update:value", value: string): void;
 }>();
+
+const prepSeconds = 30;
+const prepRemaining = ref<number | null>(null);
+let prepInterval: number | null = null;
+
+const clearPrep = () => {
+  if (prepInterval) window.clearInterval(prepInterval);
+  prepInterval = null;
+  prepRemaining.value = null;
+};
+
+const beginPrep = () => {
+  if (props.disabled || props.isExpired) return;
+  if (props.startedAt || props.isTimerRunning) return;
+  if (prepInterval) return;
+  prepRemaining.value = prepSeconds;
+  prepInterval = window.setInterval(() => {
+    if (prepRemaining.value === null) return;
+    if (prepRemaining.value <= 1) {
+      clearPrep();
+      emit("start");
+      return;
+    }
+    prepRemaining.value -= 1;
+  }, 1000);
+};
+
+const startNow = () => {
+  if (props.disabled || props.isExpired) return;
+  if (props.startedAt || props.isTimerRunning) return;
+  clearPrep();
+  emit("start");
+};
 
 const wordCount = computed(() => {
   const text = props.value.trim();
@@ -24,11 +61,29 @@ const wordCount = computed(() => {
 const isEmpty = computed(() => !props.value.trim());
 const belowMinimum = computed(() => wordCount.value > 0 && wordCount.value < 100);
 const aboveRecommended = computed(() => wordCount.value > 250);
+const canType = computed(() => !!props.startedAt || props.isTimerRunning);
 
 const updateValue = (event: Event) => {
+  if (!canType.value) return;
   const value = (event.target as HTMLTextAreaElement | null)?.value ?? "";
   emit("update:value", value);
 };
+
+watch(
+  () => [props.startedAt, props.isTimerRunning, props.disabled, props.isExpired] as const,
+  ([startedAt, isTimerRunning, disabled, isExpired]) => {
+    if (disabled || isExpired || startedAt || isTimerRunning) {
+      clearPrep();
+      return;
+    }
+    beginPrep();
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  clearPrep();
+});
 </script>
 
 <template>
@@ -50,6 +105,15 @@ const updateValue = (event: Event) => {
     </div>
 
     <div class="grid gap-3">
+      <div
+        v-if="!canType && typeof prepRemaining === 'number'"
+        class="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/75"
+      >
+        Starting in <span class="font-extrabold text-[#ff8a1f]">{{ prepRemaining }}s</span>. You can
+        start now if you are ready.
+        <AppButton variant="secondary" class="ml-3 h-9 px-4" @click="startNow">Start Now</AppButton>
+      </div>
+
       <div class="flex flex-wrap items-center gap-3 text-xs font-semibold">
         <span class="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-white/70">
           Word count: {{ wordCount }}
@@ -61,6 +125,7 @@ const updateValue = (event: Event) => {
 
       <textarea
         :value="value"
+        :disabled="!canType || disabled"
         class="min-h-72 w-full resize-y rounded-3xl border border-white/10 bg-white/95 px-4 py-3 text-sm leading-6 text-[#0f172a] outline-none"
         placeholder="Subject:&#10;&#10;Dear ...&#10;&#10;Write your email here..."
         @input="updateValue"

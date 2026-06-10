@@ -289,9 +289,8 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
       return;
     }
 
-    emailWritingStartedAt.value = Date.now();
+    emailWritingStartedAt.value = null;
     await loadEmailWritingTopic();
-    emailWritingTimer.start();
   };
 
   const advancePhase = async (current: TestPhase) => {
@@ -517,6 +516,14 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     }
   };
 
+  const startEmailWriting = async () => {
+    await loadEmailWritingTopic();
+    if (!emailWritingStartedAt.value) {
+      emailWritingStartedAt.value = Date.now();
+      emailWritingTimer.start();
+    }
+  };
+
   const submitSpeaking = async (audio: Blob) => {
     const startedAt = speakingStartedAt.value ?? Date.now();
     await submitAudioSectionInternal("speaking", audio, startedAt, false);
@@ -596,5 +603,7 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     submitEmailWriting,
     speakingStartedAt,
     readAloudStartedAt,
+    emailWritingStartedAt,
+    startEmailWriting,
   };
 };

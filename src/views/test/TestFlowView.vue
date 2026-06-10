@@ -72,6 +72,8 @@ const {
   submitEmailWriting,
   speakingStartedAt,
   readAloudStartedAt,
+  emailWritingStartedAt,
+  startEmailWriting,
 } = useEnglishTestFlow(testType, testId);
 
 const confirmAndSubmit = async (message: string, fn: () => Promise<void>) => {
@@ -304,7 +306,11 @@ onMounted(async () => {
         :timer-value="emailWritingTimer.format.value"
         :prompt="emailWritingTopic.prompt"
         :value="emailWritingValue"
+        :started-at="emailWritingStartedAt"
+        :is-timer-running="emailWritingTimer.isRunning.value"
+        :is-expired="emailWritingTimer.isExpired.value"
         @update:value="onUpdateEmailWriting"
+        @start="startEmailWriting()"
         @submit="onSubmitEmailWriting()"
       />
 
