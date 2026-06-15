@@ -75,12 +75,20 @@ const summaryCards = computed(() => {
       label: "Overall",
       score: resolved.value.overall.score,
       maxScore: resolved.value.overall.maxScore,
+      percentage:
+        resolved.value.overall.maxScore > 0
+          ? Math.round((resolved.value.overall.score / resolved.value.overall.maxScore) * 100)
+          : 0,
     },
     ...resolved.value.sections.map((section) => ({
       key: section.id,
       label: section.name,
       score: Number(section.marks_obtained ?? 0),
       maxScore: Number(section.max_marks ?? 0),
+      percentage:
+        Number(section.max_marks ?? 0) > 0
+          ? Math.round((Number(section.marks_obtained ?? 0) / Number(section.max_marks ?? 0)) * 100)
+          : 0,
     })),
   ];
 });
@@ -217,19 +225,22 @@ onBeforeUnmount(() => {
   <AppShell>
     <div class="grid gap-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div class="min-w-0">
           <div class="text-xs font-extrabold tracking-[1.8px] text-white/55">RESULTS</div>
-          <h1 class="mt-2 text-3xl font-extrabold tracking-[-0.6px]">
+          <h1 class="mt-2 wrap-break-word text-3xl font-extrabold tracking-[-0.6px]">
             {{ test?.name ?? "Test Results" }}
           </h1>
-          <div v-if="myTest?.user_test_mapping_id" class="mt-2 text-xs font-bold text-white/55">
+          <div
+            v-if="myTest?.user_test_mapping_id"
+            class="mt-2 break-all text-xs font-bold text-white/55"
+          >
             Attempt: {{ myTest.user_test_mapping_id }}
           </div>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex w-full items-center gap-3 sm:w-auto">
           <AppButton
             variant="secondary"
-            class="h-10 px-5"
+            class="h-10 w-full px-5 sm:w-auto"
             @click="router.push({ name: 'dashboard' })"
             >Dashboard</AppButton
           >
@@ -287,8 +298,11 @@ onBeforeUnmount(() => {
               <div class="text-xs font-extrabold tracking-[1.6px] text-white/55">
                 {{ card.label.toUpperCase() }}
               </div>
-              <div class="mt-2 text-3xl font-extrabold text-white">
-                {{ card.score }}<span class="text-white/55">/{{ card.maxScore }}</span>
+              <div class="mt-2 flex items-end justify-between gap-3">
+                <div class="text-3xl font-extrabold text-white">
+                  {{ card.score }}<span class="text-white/55">/{{ card.maxScore }}</span>
+                </div>
+                <div class="text-sm font-extrabold text-[#ff8a1f]">{{ card.percentage }}%</div>
               </div>
             </div>
           </div>
@@ -348,7 +362,7 @@ onBeforeUnmount(() => {
                 class="rounded-2xl border border-white/10 bg-black/30 p-4"
               >
                 <div class="text-sm font-semibold text-white/85">{{ i + 1 }}. {{ q }}</div>
-                <div class="mt-2 text-sm text-white/70">
+                <div class="mt-2 wrap-break-word text-sm text-white/70">
                   <template v-if="sec.answers && sec.answers[i] && isAudioString(sec.answers[i])">
                     <template v-if="audioBySectionId[sec.id]?.loading">Loading audio...</template>
                     <template v-else-if="audioBySectionId[sec.id]?.error">{{
@@ -390,7 +404,7 @@ onBeforeUnmount(() => {
             Results are ready, but the response format isn’t recognized by the UI yet.
           </div>
           <pre
-            class="mt-4 overflow-auto rounded-2xl border border-white/10 bg-black/35 p-4 text-xs text-white/70"
+            class="mt-4 max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-2xl border border-white/10 bg-black/35 p-4 text-xs text-white/70"
             >{{ JSON.stringify(results, null, 2) }}</pre
           >
         </div>

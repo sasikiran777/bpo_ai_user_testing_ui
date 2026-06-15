@@ -39,11 +39,33 @@ const stopStream = (stream: MediaStream) => {
   stream.getTracks().forEach((t) => t.stop())
 }
 
+const isLocalhost =
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const requiresSecureContext = () => {
+  if (window.isSecureContext) return false
+  return !isLocalhost
+}
+
+const canRecordAudio = () => typeof window.MediaRecorder !== 'undefined'
+
 const requestMicrophoneAccess = async () => {
   micError.value = null
+  if (requiresSecureContext()) {
+    micStatus.value = 'unsupported'
+    micError.value =
+      'Microphone access requires HTTPS. Open this site using https:// (or use localhost).'
+    return
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     micStatus.value = 'unsupported'
     micError.value = 'This browser does not support microphone access.'
+    return
+  }
+  if (!canRecordAudio()) {
+    micStatus.value = 'unsupported'
+    micError.value =
+      'This browser does not support audio recording. Please try Chrome on Android or Safari 17+.'
     return
   }
   micStatus.value = 'checking'
@@ -58,8 +80,20 @@ const requestMicrophoneAccess = async () => {
 }
 
 const syncInitialPermission = async () => {
+  if (requiresSecureContext()) {
+    micStatus.value = 'unsupported'
+    micError.value =
+      'Microphone access requires HTTPS. Open this site using https:// (or use localhost).'
+    return
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     micStatus.value = 'unsupported'
+    return
+  }
+  if (!canRecordAudio()) {
+    micStatus.value = 'unsupported'
+    micError.value =
+      'This browser does not support audio recording. Please try Chrome on Android or Safari 17+.'
     return
   }
   const perms = navigator.permissions
@@ -120,8 +154,8 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="flex items-center justify-end gap-3">
-      <AppButton class="h-10 px-6" :disabled="loading || startDisabled" @click="emit('start')">Start</AppButton>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+      <AppButton class="h-10 w-full px-6 sm:w-auto" :disabled="loading || startDisabled" @click="emit('start')">Start</AppButton>
     </div>
   </div>
 </template>

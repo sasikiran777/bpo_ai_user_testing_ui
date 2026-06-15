@@ -58,11 +58,18 @@ const {
   readAloudTimer,
   emailWritingTimer,
   activeTimerLabel,
+  writingMaxTimeMin,
+  readingMaxTimeMin,
+  speakingMaxTimeMin,
+  readAloudMaxTimeMin,
+  emailWritingMaxTimeMin,
   init,
   start,
   abandon,
   submitWriting,
   submitReading,
+  startWriting,
+  startReading,
   startSpeaking,
   submitSpeaking,
   finalizeSpeakingAuto,
@@ -70,6 +77,8 @@ const {
   submitReadAloud,
   finalizeReadAloudAuto,
   submitEmailWriting,
+  writingStartedAt,
+  readingStartedAt,
   speakingStartedAt,
   readAloudStartedAt,
   emailWritingStartedAt,
@@ -83,6 +92,11 @@ const confirmAndSubmit = async (message: string, fn: () => Promise<void>) => {
 };
 
 const onSubmitWriting = async () => {
+  if (!writingValues.response.trim()) {
+    error.value = "Please write your response before submitting.";
+    return;
+  }
+
   await confirmAndSubmit(
     "Submitting Writing will lock this section. You cannot come back after submitting. Continue?",
     submitWriting,
@@ -106,6 +120,11 @@ const onSubmitEmailWriting = async () => {
     "Submitting Email Writing will finish your test. You cannot come back after submitting. Continue?",
     submitEmailWriting,
   );
+};
+
+const onUpdateWriting = (value: { response: string }) => {
+  Object.assign(writingValues, value);
+  error.value = null;
 };
 
 const onUpdateEmailWriting = (value: string) => {
@@ -206,21 +225,21 @@ onMounted(async () => {
   <AppShell logout-disabled>
     <div class="grid gap-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div class="min-w-0">
           <div class="text-xs font-extrabold tracking-[1.8px] text-white/55">
             {{ (test?.name ?? "TEST").toUpperCase() }}
           </div>
-          <div class="mt-2 text-2xl font-extrabold tracking-[-0.4px]">
+          <div class="mt-2 wrap-break-word text-2xl font-extrabold tracking-[-0.4px]">
             {{ phaseTitle }}
           </div>
-          <div v-if="session" class="mt-1 text-xs font-bold text-white/55">
+          <div v-if="session" class="mt-1 break-all text-xs font-bold text-white/55">
             Session: {{ session.id }} · Status: {{ session.status }}
           </div>
         </div>
 
         <div
           v-if="activeTimerLabel"
-          class="rounded-2xl border border-white/10 bg-black/35 px-4 py-2 text-sm font-extrabold tracking-[0.6px]"
+          class="self-start rounded-2xl border border-white/10 bg-black/35 px-4 py-2 text-sm font-extrabold tracking-[0.6px] sm:self-auto"
         >
           {{ activeTimerLabel }} time:
           <span class="text-[#ff8a1f]">
@@ -259,8 +278,13 @@ onMounted(async () => {
         v-else-if="phase === 'writing'"
         timer-label="Time left"
         :timer-value="writingTimer.format.value"
+        :max-time-min="writingMaxTimeMin"
         :values="writingValues"
-        @update:values="(v) => Object.assign(writingValues, v)"
+        :started-at="writingStartedAt"
+        :is-timer-running="writingTimer.isRunning.value"
+        :is-expired="writingTimer.isExpired.value"
+        @update:values="onUpdateWriting"
+        @start="startWriting()"
         @submit="onSubmitWriting()"
       />
 
@@ -268,9 +292,15 @@ onMounted(async () => {
         v-else-if="phase === 'reading' && readingSet"
         timer-label="Time left"
         :timer-value="readingTimer.format.value"
+        :max-time-min="readingMaxTimeMin"
         :reading-set="readingSet"
         :answers="readingAnswers"
+        :started-at="readingStartedAt"
+        :is-timer-running="readingTimer.isRunning.value"
+        :is-expired="readingTimer.isExpired.value"
+        :disabled="isLocked"
         @update:answers="(v) => Object.assign(readingAnswers, v)"
+        @start="startReading()"
         @submit="onSubmitReading()"
       />
 
@@ -279,6 +309,7 @@ onMounted(async () => {
         timer-label="Time left"
         :timer-value="speakingTimer.format.value"
         :topic="speakingTopic"
+        :max-time-min="speakingMaxTimeMin"
         :started-at="speakingStartedAt"
         :is-timer-running="speakingTimer.isRunning.value"
         :is-expired="speakingTimer.isExpired.value"
@@ -293,6 +324,7 @@ onMounted(async () => {
         :timer-value="readAloudTimer.format.value"
         :topic="readAloudTopic"
         :started-at="readAloudStartedAt"
+        :max-time-min="readAloudMaxTimeMin"
         :is-timer-running="readAloudTimer.isRunning.value"
         :is-expired="readAloudTimer.isExpired.value"
         @start="startReadAloud()"
@@ -307,6 +339,7 @@ onMounted(async () => {
         :prompt="emailWritingTopic.prompt"
         :value="emailWritingValue"
         :started-at="emailWritingStartedAt"
+        :max-time-min="emailWritingMaxTimeMin"
         :is-timer-running="emailWritingTimer.isRunning.value"
         :is-expired="emailWritingTimer.isExpired.value"
         @update:value="onUpdateEmailWriting"

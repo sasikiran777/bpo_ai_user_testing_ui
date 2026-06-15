@@ -38,12 +38,12 @@ const onKeydown = (e: KeyboardEvent) => {
 </script>
 
 <template>
-  <div class="grid gap-1.5">
+  <div class="grid min-w-0 gap-1.5">
     <label class="text-[13px] font-semibold text-[rgba(15,23,42,0.85)]" :for="inputId">{{
       label
     }}</label>
     <input
-      class="h-10.5 rounded-xl border bg-white px-3 text-[#0f172a] placeholder:text-[#94a3b8] outline-none transition focus:ring-0 selection:bg-[#ff8a1f]/45 selection:text-[#0f172a]"
+      class="h-10.5 w-full min-w-0 rounded-xl border bg-white px-3 text-[#0f172a] placeholder:text-[#94a3b8] outline-none transition focus:ring-0 selection:bg-[#ff8a1f]/45 selection:text-[#0f172a]"
       :id="inputId"
       :name="name"
       :type="inputType"

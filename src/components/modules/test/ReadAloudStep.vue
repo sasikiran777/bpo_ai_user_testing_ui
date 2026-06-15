@@ -6,6 +6,7 @@ import type { SpeakingTopic } from "@/types/test/test.types";
 const props = defineProps<{
   timerLabel: string;
   timerValue: string;
+  maxTimeMin: number;
   disabled?: boolean;
   topic: SpeakingTopic;
   startedAt: number | null;
@@ -92,6 +93,18 @@ const canRerecord = computed(
     !!recordedBlob.value,
 );
 
+const timeLabel = computed(() => {
+  const m = props.maxTimeMin;
+  if (m < 1) return `${Math.round(m * 60)} seconds`;
+  if (m === 1) return "1 minute";
+  return `${m} minutes`;
+});
+
+const isLocalhost =
+  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+const isSecureEnough = () => window.isSecureContext || isLocalhost;
+
 const buildBlob = (mimeType?: string) => new Blob(chunks.value, { type: mimeType ?? "audio/webm" });
 
 const finalizeRecorderState = () => {
@@ -141,6 +154,20 @@ const startRecording = async () => {
   if (!canStartRecording.value && !canRerecord.value) return;
 
   permissionError.value = null;
+  if (!isSecureEnough()) {
+    permissionError.value =
+      "Microphone access requires HTTPS. Please open this site using https:// and try again.";
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    permissionError.value = "This browser does not support microphone access.";
+    return;
+  }
+  if (typeof window.MediaRecorder === "undefined") {
+    permissionError.value =
+      "This browser does not support audio recording. Please try Chrome on Android or Safari 17+.";
+    return;
+  }
   if (!props.startedAt && !props.isTimerRunning) emit("start");
   revokePreview();
   recordedBlob.value = null;
@@ -243,7 +270,7 @@ onBeforeUnmount(() => {
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <div class="text-xs font-extrabold tracking-[1.8px] text-white/55">SECTION 4</div>
-        <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Read Aloud (90 seconds)</h2>
+        <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Read Aloud ({{ timeLabel }})</h2>
         <p class="mt-1 text-sm text-white/65">
           Read the passage aloud clearly. You can replay and re-record before final submission.
         </p>
@@ -257,11 +284,11 @@ onBeforeUnmount(() => {
 
     <div
       v-if="!recording && !recordedBlob && typeof prepRemaining === 'number'"
-      class="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/75"
+      class="flex flex-col items-start gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/75 sm:flex-row sm:items-center"
     >
       Starting in <span class="font-extrabold text-[#ff8a1f]">{{ prepRemaining }}s</span>. Recording
       will start automatically, or you can start now.
-      <AppButton variant="secondary" class="ml-3 h-9 px-4" @click="startRecording"
+      <AppButton variant="secondary" class="h-9 w-full px-4 sm:ml-3 sm:w-auto" @click="startRecording"
         >Start Now</AppButton
       >
     </div>

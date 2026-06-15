@@ -2,24 +2,11 @@ import { computed, reactive, ref, watch } from "vue";
 import { testsApi } from "@/apis/test/tests.api";
 import { useProctoring } from "@/composables/test/useProctoring";
 import { useSectionTimer } from "@/composables/test/useSectionTimer";
-import type {
-  EnglishSection,
-  ReadingSet,
-  SpeakingTopic,
-  TestSession,
-  TestType,
-  WritingTopic,
-} from "@/types/test/test.types";
+import type { EnglishSection, ReadingSet, SpeakingTopic, TestSession, TestType, WritingTopic } from "@/types/test/test.types";
 import { deriveUserTestState } from "@/utils/userTestStatus";
 
 type Phase = "intro" | EnglishSection | "results";
-type WritingQuestionKey =
-  | "aboutMe"
-  | "location"
-  | "experience"
-  | "roles"
-  | "responsibilities"
-  | "other";
+type WritingQuestionKey = "response";
 type SectionWithAudio = "speaking" | "readAloud";
 type TestPhase = Exclude<Phase, "intro" | "results">;
 
@@ -58,21 +45,11 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const phase = ref<Phase>("intro");
 
   const writingValues = reactive({
-    aboutMe: "",
-    location: "",
-    experience: "",
-    roles: "",
-    responsibilities: "",
-    other: "",
+    response: "",
   });
 
   const writingTyping = reactive({
-    aboutMe: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
-    location: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
-    experience: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
-    roles: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
-    responsibilities: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
-    other: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
+    response: { firstTs: 0, lastTs: 0, lastLen: 0, addedChars: 0, activeMs: 0 },
   });
 
   const resetWritingTyping = () => {
@@ -112,33 +89,13 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
 
   const buildWritingTestNotes = (labels: string[]) => {
     const entries: Array<{ label: string; wpm: number }> = [
-      { label: labels[0] ?? "Tell us about yourself", wpm: calcWpm(writingTyping.aboutMe) },
-      { label: labels[1] ?? "Where are you from?", wpm: calcWpm(writingTyping.location) },
-      { label: labels[2] ?? "Experience summary", wpm: calcWpm(writingTyping.experience) },
-      { label: labels[3] ?? "Roles you worked in", wpm: calcWpm(writingTyping.roles) },
-      { label: labels[4] ?? "Responsibilities", wpm: calcWpm(writingTyping.responsibilities) },
-      { label: labels[5] ?? "Anything else?", wpm: calcWpm(writingTyping.other) },
+      { label: labels[0] ?? "Tell us about yourself", wpm: calcWpm(writingTyping.response) },
     ];
 
-    const totalChars =
-      writingTyping.aboutMe.addedChars +
-      writingTyping.location.addedChars +
-      writingTyping.experience.addedChars +
-      writingTyping.roles.addedChars +
-      writingTyping.responsibilities.addedChars +
-      writingTyping.other.addedChars;
+    const totalChars = writingTyping.response.addedChars;
+    const totalMs = writingTyping.response.activeMs;
 
-    const totalMs =
-      writingTyping.aboutMe.activeMs +
-      writingTyping.location.activeMs +
-      writingTyping.experience.activeMs +
-      writingTyping.roles.activeMs +
-      writingTyping.responsibilities.activeMs +
-      writingTyping.other.activeMs;
-
-    const typedFields = Object.values(writingTyping).filter(
-      (v) => v.addedChars > 0 && v.firstTs && v.lastTs,
-    );
+    const typedFields = Object.values(writingTyping).filter((v) => v.addedChars > 0 && v.firstTs && v.lastTs);
     const minFirst = typedFields.length ? Math.min(...typedFields.map((v) => v.firstTs)) : 0;
     const maxLast = typedFields.length ? Math.max(...typedFields.map((v) => v.lastTs)) : 0;
     const fallbackMs = Math.max(1, maxLast - minFirst);
@@ -158,6 +115,23 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const speakingStartedAt = ref<number | null>(null);
   const readAloudStartedAt = ref<number | null>(null);
   const emailWritingStartedAt = ref<number | null>(null);
+
+  const writingMaxTimeMin = ref(5);
+  const readingMaxTimeMin = ref(5);
+  const speakingMaxTimeMin = ref(3);
+  const readAloudMaxTimeMin = ref(1.5);
+  const emailWritingMaxTimeMin = ref(5);
+
+  const clampMaxTimeMin = (value: unknown, fallback: number) => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return fallback;
+    return value;
+  };
+
+  const writingDurationSec = computed(() => Math.ceil(clampMaxTimeMin(writingMaxTimeMin.value, 5) * 60));
+  const readingDurationSec = computed(() => Math.ceil(clampMaxTimeMin(readingMaxTimeMin.value, 5) * 60));
+  const speakingDurationSec = computed(() => Math.ceil(clampMaxTimeMin(speakingMaxTimeMin.value, 3) * 60));
+  const readAloudDurationSec = computed(() => Math.ceil(clampMaxTimeMin(readAloudMaxTimeMin.value, 1.5) * 60));
+  const emailWritingDurationSec = computed(() => Math.ceil(clampMaxTimeMin(emailWritingMaxTimeMin.value, 5) * 60));
 
   const proctoring = useProctoring();
 
@@ -264,16 +238,14 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     phase.value = nextPhase;
 
     if (nextPhase === "writing") {
-      writingStartedAt.value = Date.now();
+      writingStartedAt.value = null;
       resetWritingTyping();
-      writingTimer.start();
       return;
     }
 
     if (nextPhase === "reading") {
-      readingStartedAt.value = Date.now();
+      readingStartedAt.value = null;
       await loadReadingSet();
-      readingTimer.start();
       return;
     }
 
@@ -310,21 +282,9 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     const sectionId = readSectionId(testId, "writing");
     if (userTestMappingId && sectionId) {
       const questions = [
-        "Tell us about yourself",
-        "Where are you from?",
-        "Experience summary",
-        "Roles you worked in",
-        "Responsibilities",
-        "Anything else?",
+        "Tell us about yourself, including your name, where you are from, and your work experience.",
       ];
-      const answers = [
-        writingValues.aboutMe,
-        writingValues.location,
-        writingValues.experience,
-        writingValues.roles,
-        writingValues.responsibilities,
-        writingValues.other,
-      ];
+      const answers = [writingValues.response];
       await testsApi.saveAnswers({
         user_test_mapping_id: userTestMappingId,
         questions,
@@ -424,19 +384,19 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     if (auto) return;
   };
 
-  const writingTimer = useSectionTimer(300, () => {
+  const writingTimer = useSectionTimer(writingDurationSec, () => {
     if (phase.value !== "writing") return;
     void submitWritingInternal(true);
   });
 
-  const readingTimer = useSectionTimer(300, () => {
+  const readingTimer = useSectionTimer(readingDurationSec, () => {
     if (phase.value !== "reading") return;
     void submitReadingInternal(true);
   });
 
-  const speakingTimer = useSectionTimer(180);
-  const readAloudTimer = useSectionTimer(90);
-  const emailWritingTimer = useSectionTimer(300, () => {
+  const speakingTimer = useSectionTimer(speakingDurationSec);
+  const readAloudTimer = useSectionTimer(readAloudDurationSec);
+  const emailWritingTimer = useSectionTimer(emailWritingDurationSec, () => {
     if (phase.value !== "emailWriting") return;
     void submitEmailWritingInternal(true);
   });
@@ -448,6 +408,14 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
       const tests = await testsApi.myTests();
       const t = tests.find((x) => x.id === testId);
       setSessionStatusFromBackend(t?.status);
+      for (const s of t?.sections ?? []) {
+        const n = s.name.trim().toLowerCase();
+        if (n === "write") writingMaxTimeMin.value = clampMaxTimeMin(s.max_time, writingMaxTimeMin.value);
+        else if (n === "read") readingMaxTimeMin.value = clampMaxTimeMin(s.max_time, readingMaxTimeMin.value);
+        else if (n === "speak") speakingMaxTimeMin.value = clampMaxTimeMin(s.max_time, speakingMaxTimeMin.value);
+        else if (n === "read aloud") readAloudMaxTimeMin.value = clampMaxTimeMin(s.max_time, readAloudMaxTimeMin.value);
+        else if (n === "email writing") emailWritingMaxTimeMin.value = clampMaxTimeMin(s.max_time, emailWritingMaxTimeMin.value);
+      }
       phase.value =
         session.value?.status === "grading" ||
         session.value?.status === "completed" ||
@@ -502,6 +470,20 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const submitWriting = async () => submitWritingInternal(false);
   const submitReading = async () => submitReadingInternal(false);
 
+  const startWriting = async () => {
+    if (!writingStartedAt.value) {
+      writingStartedAt.value = Date.now();
+      writingTimer.start();
+    }
+  };
+
+  const startReading = async () => {
+    if (!readingStartedAt.value) {
+      readingStartedAt.value = Date.now();
+      readingTimer.start();
+    }
+  };
+
   const startSpeaking = async () => {
     await loadSpeakingTopic();
     speakingStartedAt.value = Date.now();
@@ -543,28 +525,8 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
   const submitEmailWriting = async () => submitEmailWritingInternal(false);
 
   watch(
-    () => writingValues.aboutMe,
-    (v) => recordWritingTyping("aboutMe", v),
-  );
-  watch(
-    () => writingValues.location,
-    (v) => recordWritingTyping("location", v),
-  );
-  watch(
-    () => writingValues.experience,
-    (v) => recordWritingTyping("experience", v),
-  );
-  watch(
-    () => writingValues.roles,
-    (v) => recordWritingTyping("roles", v),
-  );
-  watch(
-    () => writingValues.responsibilities,
-    (v) => recordWritingTyping("responsibilities", v),
-  );
-  watch(
-    () => writingValues.other,
-    (v) => recordWritingTyping("other", v),
+    () => writingValues.response,
+    (v) => recordWritingTyping("response", v),
   );
 
   return {
@@ -589,11 +551,18 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     readAloudTimer,
     emailWritingTimer,
     activeTimerLabel,
+    writingMaxTimeMin,
+    readingMaxTimeMin,
+    speakingMaxTimeMin,
+    readAloudMaxTimeMin,
+    emailWritingMaxTimeMin,
     init,
     start,
     abandon,
     submitWriting,
     submitReading,
+    startWriting,
+    startReading,
     startSpeaking,
     submitSpeaking,
     finalizeSpeakingAuto,
@@ -601,6 +570,8 @@ export const useEnglishTestFlow = (testType: TestType, testId: string) => {
     submitReadAloud,
     finalizeReadAloudAuto,
     submitEmailWriting,
+    writingStartedAt,
+    readingStartedAt,
     speakingStartedAt,
     readAloudStartedAt,
     emailWritingStartedAt,

@@ -91,18 +91,18 @@ onMounted(async () => {
         <div
           v-for="t in tests"
           :key="t.id"
-          class="rounded-3xl border border-white/10 bg-black/25 p-6 backdrop-blur"
+          class="min-w-0 rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur sm:p-6"
           :class="!t.is_active ? 'opacity-70' : ''"
         >
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <div class="text-sm font-extrabold tracking-[-0.2px]">{{ t.name }}</div>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+              <div class="wrap-break-word text-sm font-extrabold tracking-[-0.2px]">{{ t.name }}</div>
               <div v-if="sectionSummary(t)" class="mt-1 text-xs font-bold text-white/55">
                 {{ sectionSummary(t) }}
               </div>
             </div>
             <div
-              class="rounded-2xl border border-white/10 bg-black/35 px-3 py-1.5 text-xs font-extrabold tracking-[0.8px]"
+              class="self-start rounded-2xl border border-white/10 bg-black/35 px-3 py-1.5 text-xs font-extrabold tracking-[0.8px]"
             >
               {{ statusBadge(t) }}
             </div>
@@ -110,10 +110,10 @@ onMounted(async () => {
 
           <p class="mt-4 text-sm leading-6 text-white/65">{{ t.description }}</p>
 
-          <div class="mt-6 flex items-center justify-between gap-3">
+          <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="text-xs font-semibold text-white/55">Single attempt only</div>
             <AppButton
-              class="h-10 px-6"
+              class="h-10 w-full px-6 sm:w-auto"
               :disabled="loading || cardAction(t).disabled"
               @click="goCard(t)"
             >

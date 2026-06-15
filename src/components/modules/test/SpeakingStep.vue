@@ -6,6 +6,7 @@ import type { SpeakingTopic } from '@/types/test/test.types'
 const props = defineProps<{
   timerLabel: string
   timerValue: string
+  maxTimeMin: number
   disabled?: boolean
   topic: SpeakingTopic
   startedAt: number | null
@@ -26,6 +27,12 @@ const permissionError = ref<string | null>(null)
 const stopped = ref(false)
 
 const canStart = computed(() => !props.disabled && !recording.value && !stopped.value)
+const timeLabel = computed(() => {
+  const m = props.maxTimeMin
+  if (m < 1) return `${Math.round(m * 60)} seconds`
+  if (m === 1) return '1 minute'
+  return `${m} minutes`
+})
 
 const prepSeconds = 30
 const prepRemaining = ref<number | null>(null)
@@ -53,6 +60,11 @@ const beginPrep = () => {
   }, 1000)
 }
 
+const isLocalhost =
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const isSecureEnough = () => window.isSecureContext || isLocalhost
+
 const confirmManualSubmit = () => {
   const ok = window.confirm(
     'Submitting will end the Speaking section and submit the full test. You cannot come back after submitting. Continue?',
@@ -79,6 +91,20 @@ const stopRecording = (auto: boolean) => {
 const startRecording = async () => {
   clearPrep()
   permissionError.value = null
+  if (!isSecureEnough()) {
+    permissionError.value =
+      'Microphone access requires HTTPS. Please open this site using https:// and try again.'
+    return
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    permissionError.value = 'This browser does not support microphone access.'
+    return
+  }
+  if (typeof window.MediaRecorder === 'undefined') {
+    permissionError.value =
+      'This browser does not support audio recording. Please try Chrome on Android or Safari 17+.'
+    return
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     const recorder = new MediaRecorder(stream)
@@ -136,7 +162,7 @@ onBeforeUnmount(() => {
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <div class="text-xs font-extrabold tracking-[1.8px] text-white/55">SECTION 3</div>
-        <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Speaking (3 minutes)</h2>
+        <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Speaking ({{ timeLabel }})</h2>
         <p class="mt-1 text-sm text-white/65">
           You have 30 seconds to prepare. Recording starts automatically, or you can start early. Recording auto-stops at the end.
         </p>
@@ -163,16 +189,16 @@ onBeforeUnmount(() => {
         <span v-else class="text-white/70">Not started</span>
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
         <AppButton
           v-if="recording"
           variant="secondary"
-          class="h-10 px-6"
+          class="h-10 w-full px-6 sm:w-auto"
           @click="confirmManualSubmit"
         >
           Submit Test Now
         </AppButton>
-        <AppButton class="h-10 px-6" :disabled="!canStart" @click="startRecording">Start Now</AppButton>
+        <AppButton class="h-10 w-full px-6 sm:w-auto" :disabled="!canStart" @click="startRecording">Start Now</AppButton>
       </div>
     </div>
 

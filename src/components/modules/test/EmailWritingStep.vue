@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 const props = defineProps<{
   timerLabel: string;
   timerValue: string;
+  maxTimeMin: number;
   disabled?: boolean;
   prompt: string;
   value: string;
@@ -61,6 +62,12 @@ const wordCount = computed(() => {
 const isEmpty = computed(() => !props.value.trim());
 const belowMinimum = computed(() => wordCount.value > 0 && wordCount.value < 100);
 const aboveRecommended = computed(() => wordCount.value > 250);
+const timeLabel = computed(() => {
+  const m = props.maxTimeMin;
+  if (m < 1) return `${Math.round(m * 60)} seconds`;
+  if (m === 1) return "1 minute";
+  return `${m} minutes`;
+});
 const canType = computed(() => !!props.startedAt || props.isTimerRunning);
 
 const updateValue = (event: Event) => {
@@ -91,7 +98,7 @@ onBeforeUnmount(() => {
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <div class="text-xs font-extrabold tracking-[1.8px] text-white/55">SECTION 5</div>
-        <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Email Writing (5 minutes)</h2>
+        <h2 class="mt-1 text-xl font-extrabold tracking-[-0.3px]">Email Writing ({{ timeLabel }})</h2>
         <p class="mt-1 text-sm text-white/65">
           Write a clear workplace email. Aim for 120-180 words and include a subject, greeting,
           body, and closing.
@@ -107,11 +114,11 @@ onBeforeUnmount(() => {
     <div class="grid gap-3">
       <div
         v-if="!canType && typeof prepRemaining === 'number'"
-        class="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/75"
+        class="flex flex-col items-start gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/75 sm:flex-row sm:items-center"
       >
         Starting in <span class="font-extrabold text-[#ff8a1f]">{{ prepRemaining }}s</span>. You can
         start now if you are ready.
-        <AppButton variant="secondary" class="ml-3 h-9 px-4" @click="startNow">Start Now</AppButton>
+        <AppButton variant="secondary" class="h-9 w-full px-4 sm:ml-3 sm:w-auto" @click="startNow">Start Now</AppButton>
       </div>
 
       <div class="flex flex-wrap items-center gap-3 text-xs font-semibold">
@@ -126,7 +133,7 @@ onBeforeUnmount(() => {
       <textarea
         :value="value"
         :disabled="!canType || disabled"
-        class="min-h-72 w-full resize-y rounded-3xl border border-white/10 bg-white/95 px-4 py-3 text-sm leading-6 text-[#0f172a] outline-none"
+        class="min-h-60 w-full resize-y rounded-3xl border border-white/10 bg-white/95 px-4 py-3 text-sm leading-6 text-[#0f172a] outline-none sm:min-h-72"
         placeholder="Subject:&#10;&#10;Dear ...&#10;&#10;Write your email here..."
         @input="updateValue"
       />
@@ -142,11 +149,11 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="flex items-center justify-end gap-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
       <div class="mr-auto text-xs font-semibold text-white/55">
         Note: Empty submissions are blocked. The section auto-submits when time ends.
       </div>
-      <AppButton class="h-10 px-6" :disabled="disabled || isEmpty" @click="emit('submit')"
+      <AppButton class="h-10 w-full px-6 sm:w-auto" :disabled="disabled || isEmpty" @click="emit('submit')"
         >Submit Test</AppButton
       >
     </div>

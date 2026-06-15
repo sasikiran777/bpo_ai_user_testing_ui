@@ -1,14 +1,16 @@
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, unref } from 'vue'
+import type { Ref } from 'vue'
 
-export const useSectionTimer = (durationSec: number, onExpire?: () => void) => {
+export const useSectionTimer = (durationSec: number | Ref<number>, onExpire?: () => void) => {
   const deadline = ref<number | null>(null)
   const now = ref(Date.now())
   const intervalId = ref<number | null>(null)
   const expiredOnce = ref(false)
+  const totalDurationSec = computed(() => unref(durationSec))
 
   const start = () => {
     expiredOnce.value = false
-    deadline.value = Date.now() + durationSec * 1000
+    deadline.value = Date.now() + totalDurationSec.value * 1000
     now.value = Date.now()
     if (intervalId.value != null) window.clearInterval(intervalId.value)
     intervalId.value = window.setInterval(() => {
@@ -28,7 +30,7 @@ export const useSectionTimer = (durationSec: number, onExpire?: () => void) => {
   }
 
   const remainingSec = computed(() => {
-    if (deadline.value == null) return durationSec
+    if (deadline.value == null) return totalDurationSec.value
     const ms = Math.max(0, deadline.value - now.value)
     return Math.ceil(ms / 1000)
   })
@@ -45,6 +47,5 @@ export const useSectionTimer = (durationSec: number, onExpire?: () => void) => {
 
   onBeforeUnmount(stop)
 
-  return { start, stop, remainingSec, isRunning, isExpired, format }
+  return { start, stop, durationSec: totalDurationSec, remainingSec, isRunning, isExpired, format }
 }
-

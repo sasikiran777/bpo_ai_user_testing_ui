@@ -16,6 +16,7 @@ export type LoginResult = {
 
 export type RegisterRequest = {
   first_name: string
+  middle_name?: string
   last_name: string
   phone: string
   email: string

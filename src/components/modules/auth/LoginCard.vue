@@ -10,7 +10,7 @@ const { loading, error } = auth;
 </script>
 
 <template>
-  <div class="w-full max-w-95">
+  <div class="w-full max-w-full sm:max-w-95">
     <div class="mb-7">
       <div class="text-2xl font-extrabold tracking-[-0.4px] text-slate-900">Sign in</div>
       <div class="mt-2 text-sm leading-6 text-slate-600">
@@ -39,7 +39,7 @@ const { loading, error } = auth;
         @blur="touch('password')"
       />
 
-      <div class="flex items-center justify-between gap-3 pt-0.5">
+      <div class="flex flex-col items-start gap-3 pt-0.5 sm:flex-row sm:items-center sm:justify-between">
         <a class="text-[13px] font-bold text-[#ff8a1f] hover:underline" href="#" @click.prevent>
           Forgot password?
         </a>
