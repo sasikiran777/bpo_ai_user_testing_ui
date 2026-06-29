@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3500 --host",
+    "dev": "vite --port 3500",
+    "dev:https": "VITE_DEV_HTTPS=true vite --port 3500",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "test:unit": "vitest",

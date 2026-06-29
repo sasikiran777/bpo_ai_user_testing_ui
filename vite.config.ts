@@ -6,12 +6,14 @@ import vueJsx from "@vitejs/plugin-vue-jsx";
 import vueDevTools from "vite-plugin-vue-devtools";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
+const enableHttps = process.env.VITE_DEV_HTTPS === "true";
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), vueJsx(), vueDevTools(), basicSsl()],
+  plugins: [vue(), vueJsx(), vueDevTools(), ...(enableHttps ? [basicSsl()] : [])],
   server: {
-    host: true,
-    https: {},
+    host: enableHttps,
+    ...(enableHttps ? { https: {} } : {}),
   },
   resolve: {
     alias: {
